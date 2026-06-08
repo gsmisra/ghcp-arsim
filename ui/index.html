@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARSIM QE Agentic Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <img class="page-logo" src="td-logo.png" alt="TD logo" />
+  <div class="page-menu">
+    <button id="menuToggleBtn" type="button" class="menu-toggle" aria-expanded="false" aria-controls="menuPanel">Menu</button>
+    <div id="menuPanel" class="menu-panel" hidden>
+      <button id="addSkillBtn" type="button">Add new skill</button>
+      <button id="addInstructionBtn" type="button">Add new Instruction</button>
+      <button id="devDocsBtn" type="button" class="ghost-btn">Dev Docs</button>
+    </div>
+  </div>
+  <main class="shell">
+    <header class="hero card">
+      <p class="kicker">Enterprise Quality Engineering</p>
+      <h1>ARSIM - Agentic QE Platform</h1>
+    </header>
+
+    <section class="card form-grid">
+      <div class="field full">
+        <label for="actionType">What do you want to do?</label>
+        <select id="actionType">
+          <option value="" selected>Select an action</option>
+          <option value="test_cases">Generate test cases</option>
+          <option value="automation_scripts">Generate automation scripts</option>
+        </select>
+      </div>
+
+      <div class="field full reference-log-card">
+        <label for="referenceLog">Referenced skill and instruction files</label>
+        <pre id="referenceLog">Loading referenced files...</pre>
+      </div>
+
+      <div class="field full" id="actionNotice" hidden>
+        <small>Automation script generation is not connected yet. Select Generate test cases to continue.</small>
+      </div>
+
+      <form id="testCaseFields" class="field-cluster full" hidden novalidate>
+      <div class="field">
+        <label for="source">Source of Requirement</label>
+        <select id="source">
+          <option value="document">Document</option>
+          <option value="confluence">Confluence</option>
+          <option value="jira">Jira / JTMF</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="outputFormat">Output Format</label>
+        <select id="outputFormat">
+          <option value="bdd">BDD Feature File</option>
+          <option value="jira_csv">Jira CSV</option>
+        </select>
+      </div>
+
+      <div class="field full" id="urlGroup" hidden>
+        <label for="sourceUrl">Confluence URL or Jira Story IDs</label>
+        <input id="sourceUrl" type="text" placeholder="Paste Confluence URL/page ID or comma-separated story IDs" />
+        <small>Auto-detects Confluence/Jira links and routes to the right handler.</small>
+      </div>
+
+      <div class="field full" id="authGroup" hidden>
+        <label for="apiUsername">Username</label>
+        <input id="apiUsername" type="text" autocomplete="off" placeholder="Enter your Jira/Confluence username" />
+
+        <label for="apiPassword">Password</label>
+        <input id="apiPassword" type="password" autocomplete="new-password" placeholder="Enter your Jira/Confluence password or token" />
+        <small>Password is masked and used only for the current request.</small>
+      </div>
+
+      <div class="field full" id="uploadGroup">
+        <label>Requirement File Upload</label>
+        <div id="dropZone" class="drop-zone">
+          <input id="fileInput" type="file" accept=".docx,.xlsx,.pdf,.csv" />
+          <p>Drag and drop .docx/.xlsx/.pdf/.csv file here or click to browse</p>
+        </div>
+      </div>
+
+      <div class="actions full">
+        <button id="generateBtn" type="submit">Generate Detailed Test Cases</button>
+      </div>
+      </form>
+    </section>
+
+    <section class="card result" id="resultSection" hidden>
+      <h2>Generation Result</h2>
+      <pre id="resultBox">No output generated yet.</pre>
+      <div class="output-actions" id="outputActions" hidden>
+        <label for="generatedFiles">Generated Files</label>
+        <select id="generatedFiles"></select>
+        <div class="action-buttons">
+          <button id="previewBtn" type="button">Preview File</button>
+          <button id="downloadBtn" type="button">Download File</button>
+        </div>
+      </div>
+      <h3>File Preview</h3>
+      <pre id="previewBox">Select a generated file and click Preview File.</pre>
+    </section>
+  </main>
+
+  <section class="wizard-overlay" id="wizardOverlay" hidden>
+    <div class="wizard-card">
+      <div class="wizard-header">
+        <h2 id="wizardTitle">Create file</h2>
+        <button id="closeWizardBtn" type="button" class="ghost-btn">Close</button>
+      </div>
+      <p id="wizardStepMeta" class="wizard-meta">Step 1 of 1 | Required</p>
+      <p id="wizardPrompt" class="muted">Follow the guided steps.</p>
+      <div class="field">
+        <label for="wizardInput" id="wizardLabel">Value</label>
+        <textarea id="wizardInput" rows="4" autocomplete="off"></textarea>
+        <small id="wizardHint">Helpful suggestions will appear here.</small>
+        <small id="wizardSample" class="wizard-sample">Sample input will appear here.</small>
+      </div>
+      <pre id="wizardSummary">No details captured yet.</pre>
+      <div class="wizard-preview-wrap">
+        <label for="wizardPreview">Live markdown preview</label>
+        <div id="wizardPreview" class="wizard-preview">Preview will appear here as markdown.</div>
+      </div>
+      <div class="action-buttons wizard-actions">
+        <button id="wizardNextBtn" type="button">Next</button>
+        <button id="wizardSubmitBtn" type="button" hidden>Submit</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>TDS QE AGENTIC SOLUTION</footer>
+  <script>
+    window.APP_CONFIG = {{ app_config | tojson }};
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>

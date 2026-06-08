@@ -1,0 +1,224 @@
+2026-06-08 18:17:42,051 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 18:17:42,051 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 18:18:07,073 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:18:07] "GET / HTTP/1.1" 200 -
+2026-06-08 18:18:07,102 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:18:07] "[33mGET /styles.css HTTP/1.1[0m" 404 -
+2026-06-08 18:18:07,332 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:18:07] "[33mGET /app.js HTTP/1.1[0m" 404 -
+2026-06-08 18:18:07,651 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:18:07] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 18:18:11,669 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:18:11] "[33mGET /styles.css HTTP/1.1[0m" 404 -
+2026-06-08 18:18:12,137 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:18:12] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 18:18:25,324 | INFO | werkzeug | 192.168.68.56 - - [08/Jun/2026 18:18:25] "GET / HTTP/1.1" 200 -
+2026-06-08 18:18:25,483 | INFO | werkzeug | 192.168.68.56 - - [08/Jun/2026 18:18:25] "[33mGET /styles.css HTTP/1.1[0m" 404 -
+2026-06-08 18:18:25,486 | INFO | werkzeug | 192.168.68.56 - - [08/Jun/2026 18:18:25] "[33mGET /app.js HTTP/1.1[0m" 404 -
+2026-06-08 18:18:25,709 | INFO | werkzeug | 192.168.68.56 - - [08/Jun/2026 18:18:25] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 18:20:06,723 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 18:20:06,723 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 18:20:18,747 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:18] "GET / HTTP/1.1" 200 -
+2026-06-08 18:20:18,898 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:18] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 18:20:18,899 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:18] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 18:20:19,026 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:19] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 18:20:32,513 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:32] "GET / HTTP/1.1" 200 -
+2026-06-08 18:20:32,541 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:32] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 18:20:32,543 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:32] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 18:20:32,689 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:20:32] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 18:43:30,966 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:43:30] "GET / HTTP/1.1" 200 -
+2026-06-08 18:43:30,982 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:43:30] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 18:43:30,986 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:43:30] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 18:43:42,838 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:43:42] "POST /api/generate/document HTTP/1.1" 200 -
+2026-06-08 18:44:03,956 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:44:03] "GET / HTTP/1.1" 200 -
+2026-06-08 18:44:03,963 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:44:03] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 18:44:03,963 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:44:03] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 18:46:05,028 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:46:05] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 18:46:05,078 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:46:05] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 18:47:13,131 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:47:13] "GET / HTTP/1.1" 200 -
+2026-06-08 18:47:13,144 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:47:13] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 18:47:13,149 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:47:13] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 18:54:56,928 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 18:54:56,929 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 18:55:24,940 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:55:24] "GET / HTTP/1.1" 200 -
+2026-06-08 18:55:24,959 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:55:24] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 18:55:24,961 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:55:24] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 18:55:41,720 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:55:41] "POST /api/generate/document HTTP/1.1" 200 -
+2026-06-08 18:55:47,877 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:55:47] "GET /api/output/content?file=Online_Banking_Enterprise_BRD.feature HTTP/1.1" 200 -
+2026-06-08 18:55:54,089 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:55:54] "GET /api/output/download?file=Online_Banking_Enterprise_BRD.feature HTTP/1.1" 200 -
+2026-06-08 18:59:43,584 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 18:59:43,585 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 18:59:46,697 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:59:46] "GET / HTTP/1.1" 200 -
+2026-06-08 18:59:46,718 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:59:46] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 18:59:46,719 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 18:59:46] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 19:00:14,317 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:00:14] "POST /api/generate/document HTTP/1.1" 200 -
+2026-06-08 19:15:29,189 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:15:29,189 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:15:29,236 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:15:29] "GET / HTTP/1.1" 200 -
+2026-06-08 19:15:29,500 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:15:29] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 19:15:29,556 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:15:29] "GET /td-logo.png HTTP/1.1" 200 -
+2026-06-08 19:15:29,558 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:15:29] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 19:15:29,659 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:15:29] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 19:17:09,739 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:17:09,740 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:17:09,752 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:17:09] "GET / HTTP/1.1" 200 -
+2026-06-08 19:17:09,974 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:17:09] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 19:17:10,027 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:17:10] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:17:10,075 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:17:10] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 19:17:47,942 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:17:47] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:17:48,362 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:17:48] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:18:32,076 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:18:32] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:23:35,756 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:23:35,757 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:23:35,798 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:23:35] "GET / HTTP/1.1" 200 -
+2026-06-08 19:23:36,042 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:23:36] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 19:23:36,107 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:23:36] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:23:36,127 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:23:36] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 19:23:52,174 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:23:52] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:23:52,259 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:23:52] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:24:41,976 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:24:41] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:26:33,999 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:26:33,999 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:26:34,131 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:26:34] "GET / HTTP/1.1" 200 -
+2026-06-08 19:26:34,171 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:26:34] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:26:34,391 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:26:34] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:26:34,478 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:26:34] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 19:26:53,680 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:26:53] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:26:54,038 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:26:54] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:28:39,982 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:28:39,982 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:28:40,336 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:28:40] "GET / HTTP/1.1" 200 -
+2026-06-08 19:28:40,356 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:28:40] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 19:28:42,801 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:28:42] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 19:28:54,106 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:28:54] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:28:54,470 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:28:54] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:29:19,684 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:19] "GET / HTTP/1.1" 200 -
+2026-06-08 19:29:19,700 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:19] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:29:19,947 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:19] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:29:20,012 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:20] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 19:29:20,053 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:20] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 19:29:25,144 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:25] "GET / HTTP/1.1" 200 -
+2026-06-08 19:29:25,160 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:25] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:29:25,397 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:25] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:29:25,463 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:25] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 19:29:52,460 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:29:52,460 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:29:52,509 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:52] "GET / HTTP/1.1" 200 -
+2026-06-08 19:29:52,757 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:52] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:29:52,836 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:52] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:29:52,836 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:52] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 19:29:52,890 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:29:52] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 19:58:40,836 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 19:58:40,836 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 19:58:41,026 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:41] "GET / HTTP/1.1" 200 -
+2026-06-08 19:58:41,097 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:41] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:58:41,283 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:41] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:58:41,453 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:41] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 19:58:41,478 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:41] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 19:58:55,365 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:55] "GET / HTTP/1.1" 200 -
+2026-06-08 19:58:55,381 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:55] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:58:55,623 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:55] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 19:58:55,687 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:58:55] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 19:59:00,083 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:59:00] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 19:59:00,145 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 19:59:00] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 20:01:27,582 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 20:01:27,582 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 20:01:27,635 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:27] "GET / HTTP/1.1" 200 -
+2026-06-08 20:01:27,874 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:27] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 20:01:27,961 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:27] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 20:01:28,034 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:28] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 20:01:28,080 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:28] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-08 20:01:57,725 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:57] "POST /api/generate/document HTTP/1.1" 200 -
+2026-06-08 20:01:59,668 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:01:59] "GET /api/output/download?file=Online_Banking_Enterprise_BRD.feature HTTP/1.1" 200 -
+2026-06-08 20:34:46,751 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 20:34:46,752 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 20:34:46,802 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:34:46] "GET / HTTP/1.1" 200 -
+2026-06-08 20:34:47,045 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:34:47] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 20:34:47,112 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:34:47] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 20:34:47,226 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:34:47] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 20:34:47,237 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:34:47] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 20:43:31,927 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 20:43:31,927 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 20:43:31,976 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:31] "GET / HTTP/1.1" 200 -
+2026-06-08 20:43:32,235 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:32] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 20:43:32,294 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:32] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 20:43:32,336 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:32] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 20:43:32,345 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:32] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 20:43:39,558 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:39] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 20:43:39,602 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:39] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-08 20:43:49,096 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:49] "GET / HTTP/1.1" 200 -
+2026-06-08 20:43:49,423 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:49] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-08 20:43:49,423 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:49] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 20:43:49,425 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:49] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 20:43:49,689 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:43:49] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 20:44:52,274 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 20:44:52,274 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 20:44:52,299 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:44:52] "GET / HTTP/1.1" 200 -
+2026-06-08 20:44:52,540 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:44:52] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 20:44:52,583 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:44:52] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 20:44:52,629 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:44:52] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-08 20:44:52,645 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 20:44:52] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 21:04:46,326 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:04:46] "POST /api/skills/create HTTP/1.1" 200 -
+2026-06-08 21:04:46,571 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:04:46] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 21:16:13,564 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 21:16:13,564 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 21:16:13,766 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:16:13] "GET / HTTP/1.1" 200 -
+2026-06-08 21:16:14,014 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:16:14] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 21:16:14,035 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:16:14] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 21:16:14,122 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:16:14] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 21:16:14,135 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:16:14] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 21:16:18,058 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:16:18] "GET /dev-docs HTTP/1.1" 200 -
+2026-06-08 21:20:30,156 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:20:30] "POST /api/skills/create HTTP/1.1" 200 -
+2026-06-08 21:20:30,416 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:20:30] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-08 21:25:36,791 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-08 21:25:36,791 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-08 21:25:36,826 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:25:36] "GET / HTTP/1.1" 200 -
+2026-06-08 21:25:37,053 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:25:37] "GET /styles.css HTTP/1.1" 200 -
+2026-06-08 21:25:37,109 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:25:37] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-08 21:25:37,225 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:25:37] "GET /app.js HTTP/1.1" 200 -
+2026-06-08 21:25:37,240 | INFO | werkzeug | 127.0.0.1 - - [08/Jun/2026 21:25:37] "GET /api/reference-files HTTP/1.1" 200 -

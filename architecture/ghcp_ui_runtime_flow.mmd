@@ -1,0 +1,23 @@
+flowchart LR
+    U[QE User] --> UI[ARSIM HTML UI\nui/index.html]
+    UI --> API[Flask Runtime Layer\nweb_app.py]
+    API --> ORCH[QE Agentic Orchestrator\ncore-logic/qe_service.py]
+    ORCH --> SRC[Source Connectors\nDocument | Confluence | Jira/JTMF]
+    SRC --> IDX[Chunking + Embeddings\nSemantic Retrieval]
+    IDX --> LLM[GHCP-Compatible LLM Service\nChat + Embeddings API]
+    LLM --> GEN[Test Case Generation Engine\nBDD + Jira CSV]
+    GEN --> OUT[Output Store\noutput/]
+    OUT --> API
+    API --> UI
+    UI --> D[Preview / Download]
+
+    style U fill:#ffffff,stroke:#008a00,stroke-width:1px,color:#1f2937
+    style UI fill:#f8fff8,stroke:#008a00,stroke-width:2px,color:#1f2937
+    style API fill:#f8fff8,stroke:#008a00,stroke-width:2px,color:#1f2937
+    style ORCH fill:#f8fff8,stroke:#008a00,stroke-width:2px,color:#1f2937
+    style SRC fill:#ffffff,stroke:#7aa67a,stroke-width:1px,color:#1f2937
+    style IDX fill:#ffffff,stroke:#7aa67a,stroke-width:1px,color:#1f2937
+    style LLM fill:#eaf7ea,stroke:#008a00,stroke-width:2px,color:#1f2937
+    style GEN fill:#ffffff,stroke:#7aa67a,stroke-width:1px,color:#1f2937
+    style OUT fill:#ffffff,stroke:#7aa67a,stroke-width:1px,color:#1f2937
+    style D fill:#ffffff,stroke:#7aa67a,stroke-width:1px,color:#1f2937

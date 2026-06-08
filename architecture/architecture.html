@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GHCP UI-LLM Architecture</title>
+  <style>
+    :root{
+      --td-green:#008a00;
+      --ink:#1f2937;
+      --muted:#5b6777;
+      --bg:#f7faf7;
+      --card:#ffffff;
+      --line:#d7e4d7;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: "Segoe UI", "Inter", sans-serif;
+      color:var(--ink);
+      background:linear-gradient(180deg,#f3f9f3 0%,#ffffff 100%);
+    }
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 20px 48px}
+    .hero{
+      background:var(--td-green);
+      color:#fff;
+      border-radius:18px;
+      padding:24px;
+      box-shadow:0 14px 30px rgba(0,138,0,0.18);
+    }
+    .hero h1{margin:0 0 8px;font-size:30px;letter-spacing:.01em}
+    .hero p{margin:0;opacity:.95}
+    .grid{
+      margin-top:18px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 8px 16px rgba(15,23,42,.04);
+    }
+    .card h2{margin:0 0 10px;font-size:18px;color:#0f172a}
+    .card h3{margin:14px 0 8px;font-size:14px;color:#0f172a}
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px;
+      background:#f8fbf8;
+      border:1px solid #e4efe4;
+      border-radius:10px;
+      padding:10px;
+      white-space:pre-wrap;
+      line-height:1.45;
+    }
+    .full{grid-column:1 / -1}
+    ul{margin:8px 0 0;padding-left:18px}
+    li{margin:6px 0;color:var(--ink)}
+    .muted{color:var(--muted)}
+    .label{
+      display:inline-block;
+      background:#edf7ed;
+      color:#14532d;
+      border:1px solid #d7ead7;
+      border-radius:999px;
+      padding:3px 10px;
+      font-size:12px;
+      margin-right:6px;
+      margin-bottom:6px;
+    }
+    @media (max-width:980px){
+      .grid{grid-template-columns:1fr}
+    }
+  </style>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "base", themeVariables: {
+      primaryColor: "#f0fbf0",
+      primaryTextColor: "#1f2937",
+      primaryBorderColor: "#008a00",
+      lineColor: "#6b7280",
+      secondaryColor: "#ffffff",
+      tertiaryColor: "#ffffff"
+    }});
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>GHCP UI to LLM Enterprise Architecture</h1>
+      <p>ARSIM static HTML UI -> Flask runtime -> QE orchestration -> semantic retrieval + embeddings -> GHCP-compatible LLM -> BDD/CSV outputs</p>
+    </section>
+
+    <section class="grid">
+      <article class="card full">
+        <h2>Executive Summary</h2>
+        <p class="muted">
+          The browser UI does not call the LLM directly. It calls local API endpoints exposed by the Flask runtime. 
+          The backend orchestrator reads requirement sources, builds semantic context, calls embeddings and chat-completions APIs,
+          synthesizes test cases, stores artifacts in output, and returns paths for preview/download.
+        </p>
+        <div>
+          <span class="label">Channel: Browser -> Local Runtime</span>
+          <span class="label">Control: Config-Driven Endpoints</span>
+          <span class="label">Generation: Semantic LLM First</span>
+          <span class="label">Retention: Cleanup on Download</span>
+        </div>
+      </article>
+
+      <article class="card full">
+        <h2>Plain English: How The UI Talks To GHCP LLM</h2>
+        <p class="muted">
+          Think of the HTML page as a front desk, and the GHCP LLM as an expert analyst sitting in a secure back office.
+          The front desk collects your request, passes it to the office system, and then shows you the final report.
+        </p>
+        <ul>
+          <li><strong>Step 1: You choose what to generate in the UI.</strong> You provide a file, Confluence page, or Jira story IDs.</li>
+          <li><strong>Step 2: The UI sends your request to the local Flask service.</strong> This happens through API calls like generate and preview/download routes.</li>
+          <li><strong>Step 3: Flask passes it to the QE service layer.</strong> The service decides which connector to use (Document, Confluence, or Jira).</li>
+          <li><strong>Step 4: Requirement text is extracted.</strong> The system converts your source into clean requirement content.</li>
+          <li><strong>Step 5: Semantic preparation happens.</strong> The content is split into chunks, converted into embeddings, and ranked for relevance.</li>
+          <li><strong>Step 6: GHCP-compatible LLM is called.</strong> The highest-value context is sent to the LLM chat endpoint to generate detailed test cases.</li>
+          <li><strong>Step 7: Output files are created.</strong> Results are written as BDD feature files or Jira CSV test cases.</li>
+          <li><strong>Step 8: UI shows and downloads output.</strong> You preview files in the UI and download what you need.</li>
+          <li><strong>Step 9: Automatic cleanup.</strong> After download, generated output and temporary uploads are cleared based on runtime policy.</li>
+        </ul>
+      </article>
+
+      <article class="card full">
+        <h2>Component Flow (Architecture View)</h2>
+        <div class="mermaid">
+flowchart LR
+  U[QE User]
+  UI[ARSIM HTML UI<br/>ui/index.html + ui/app.js]
+  API[Flask Runtime<br/>web_app.py]
+  ORCH[QE Orchestrator<br/>core-logic/qe_service.py]
+  SRC[Source Connectors<br/>Document / Confluence / Jira]
+  CHUNK[Chunking + Semantic Context]
+  EMB[Embeddings API<br/>LLM_EMBEDDINGS_PATH]
+  RANK[Similarity Ranking<br/>Top-N relevant chunks]
+  CHAT[Chat Completions API<br/>LLM_CHAT_COMPLETIONS_PATH]
+  GEN[Generators<br/>BDD + Jira CSV]
+  OUT[Output Store<br/>output/]
+  PREV[Preview/Download APIs]
+  CLEAN[Post-Download Cleanup<br/>output + temp_uploads]
+
+  U --> UI --> API --> ORCH --> SRC --> CHUNK --> EMB --> RANK --> CHAT --> GEN --> OUT --> PREV --> UI
+  PREV --> CLEAN
+        </div>
+      </article>
+
+      <article class="card full">
+        <h2>Detailed Runtime Sequence</h2>
+        <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant User as QE User
+  participant Browser as HTML UI
+  participant Flask as Flask API
+  participant Service as QE Service
+  participant Reader as Source Reader
+  participant Sem as Semantic Generator
+  participant Emb as Embeddings API
+  participant LLM as Chat LLM API
+  participant Gen as BDD/CSV Generator
+  participant Store as output/
+
+  User->>Browser: Select source + provide inputs
+  Browser->>Flask: POST /api/generate/* (config-driven route)
+  Flask->>Service: process_document/process_confluence/process_jira
+  Service->>Reader: Read requirement text from source
+  Reader-->>Service: Normalized requirement artifact
+  Service->>Sem: generate(artifact)
+  Sem->>Emb: Embed query + chunks
+  Emb-->>Sem: Vectors
+  Sem->>Sem: Rank chunks by cosine similarity
+  Sem->>LLM: Chat completion with top-ranked context
+  LLM-->>Sem: Structured JSON test cases
+  Sem-->>Service: GeneratedTestCase[]
+  Service->>Gen: Write BDD feature or Jira CSV
+  Gen->>Store: Persist generated files
+  Service-->>Flask: Output file paths
+  Flask-->>Browser: JSON outputs
+  Browser->>Flask: GET preview/download
+  Flask->>Store: Stream selected file
+  Flask->>Store: Cleanup output + temp_uploads after download
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>How This Works in VS Code</h2>
+        <ul>
+          <li>VS Code launches local runtime via [start.bat](start.bat).</li>
+          <li>Browser opens configured base URL from [app_config.properties](app_config.properties).</li>
+          <li>UI JavaScript calls backend routes provided by [web_app.py](web_app.py).</li>
+          <li>Backend orchestration executes in [core-logic/qe_service.py](core-logic/qe_service.py).</li>
+          <li>LLM calls are made from [core-logic/llm/semantic_generator.py](core-logic/llm/semantic_generator.py), not from frontend.</li>
+        </ul>
+      </article>
+
+      <article class="card">
+        <h2>Critical Config Controls</h2>
+        <div class="mono">APP_BASE_URL
+APP_ROUTE_GENERATE_DOCUMENT
+APP_ROUTE_GENERATE_CONFLUENCE
+APP_ROUTE_GENERATE_JIRA
+APP_ROUTE_OUTPUT_CONTENT
+APP_ROUTE_OUTPUT_DOWNLOAD
+APP_OUTPUT_DIR
+APP_TEMP_UPLOAD_DIR
+APP_OUTPUT_RETENTION_KEEP_LOGS
+DEFAULT_GENERATION_MODE=semantic_llm
+LLM_API_BASE_URL
+LLM_CHAT_COMPLETIONS_PATH
+LLM_EMBEDDINGS_PATH
+LLM_API_KEY
+LLM_MODEL
+EMBEDDING_MODEL</div>
+      </article>
+
+      <article class="card full">
+        <h2>Why instructions.md and skills.md Exist</h2>
+        <ul>
+          <li><strong>instructions/instructions.md</strong> is the operating playbook. It tells the platform how to run, what flows are supported, security expectations, and extension guidance.</li>
+          <li><strong>skills/skills.md</strong> is the capability catalog. It defines what the QE agentic system can do (ingest, parse, synthesize, generate BDD/CSV) and what rules each capability should follow.</li>
+          <li>Together, these files act as governance and behavior context for the team: one is process-oriented, the other is capability-oriented.</li>
+        </ul>
+      </article>
+
+      <article class="card full">
+        <h2>How Users Can Personalize These Files (Future Manual Updates)</h2>
+        <ul>
+          <li><strong>Step 1: Open instructions/instructions.md.</strong> Add your team-specific runbook details such as naming standards, approval gates, security checks, and release rules.</li>
+          <li><strong>Step 2: Update source flow specifics.</strong> For example, add Jira project keys, Confluence space conventions, and required metadata fields.</li>
+          <li><strong>Step 3: Open skills/skills.md.</strong> Add or refine skills your QE team needs, such as API test generation, performance test generation, or compliance evidence mapping.</li>
+          <li><strong>Step 4: Add quality rules per skill.</strong> Define expected outputs, minimum detail level, and non-functional checks for each skill.</li>
+          <li><strong>Step 5: Keep changes versioned.</strong> Commit updates with a clear message (for example: "Update QE skill rules for payments domain").</li>
+          <li><strong>Step 6: Validate after each change.</strong> Run one sample generation from UI and confirm outputs match your updated standards.</li>
+          <li><strong>Step 7: Review quarterly.</strong> Treat both files as living standards so new projects, risks, and controls are continuously reflected.</li>
+        </ul>
+      </article>
+
+      <article class="card full">
+        <h2>Workflow Labels (Executive View)</h2>
+        <ul>
+          <li><strong>Workflow 1: Intake</strong> - UI captures source selection, credentials (for Jira/Confluence), and output format.</li>
+          <li><strong>Workflow 2: Retrieval</strong> - Backend connectors collect requirement payload from document/Jira/Confluence.</li>
+          <li><strong>Workflow 3: Semantic Reasoning</strong> - Requirement is chunked, embedded, ranked, and sent to LLM with top context.</li>
+          <li><strong>Workflow 4: Generation</strong> - Structured testcases are transformed into BDD feature files or Jira CSV.</li>
+          <li><strong>Workflow 5: Delivery</strong> - UI previews/downloads generated artifacts via secured output endpoints.</li>
+          <li><strong>Workflow 6: Hygiene</strong> - Runtime clears generated output and temp uploads after download completion.</li>
+        </ul>
+      </article>
+    </section>
+  </div>
+</body>
+</html>
