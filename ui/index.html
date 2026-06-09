@@ -37,10 +37,10 @@
         </select>
       </div>
 
-      <div class="field full reference-log-card">
+      <!-- <div class="field full reference-log-card">
         <label for="referenceLog">Referenced skill and instruction files</label>
         <pre id="referenceLog">Loading referenced files...</pre>
-      </div>
+      </div> -->
 
       <div class="field full" id="actionNotice" hidden>
         <small>Automation script generation is not connected yet. Select Generate test cases to continue.</small>
@@ -91,6 +91,85 @@
         <button id="generateBtn" type="submit">Generate Detailed Test Cases</button>
       </div>
       </form>
+    </section>
+
+    <section class="card ghcp-panel" id="ghcpPanel" hidden>
+      <div class="ghcp-panel-header">
+        <div>
+          <p class="kicker">Local GHCP Bridge</p>
+          <h2>Prompt Configuration</h2>
+        </div>
+        <span class="bridge-status" id="bridgeStatus">Bridge not checked yet</span>
+      </div>
+      <div class="field full">
+        <label for="ghcpPrompt">Prompt</label>
+        <textarea id="ghcpPrompt" rows="8" placeholder="Paste the requirement text, acceptance criteria, or a custom test-generation prompt here."></textarea>
+        <small>Tip: you can paste extracted document text, Jira story text, or a custom prompt. The bridge will return JSON test cases, and the UI will render them as BDD output.</small>
+      </div>
+
+      <div class="field full doc-scope" id="documentScope" hidden>
+        <label>Document Parsing Scope</label>
+        <small>Page range applies to PDF and DOCX. For DOCX, the reader uses explicit page-break boundaries when present.</small>
+        <div class="scope-grid">
+          <div class="field">
+            <label for="pageStart">Page start (PDF/DOCX)</label>
+            <input id="pageStart" type="number" min="1" placeholder="1" />
+          </div>
+          <div class="field">
+            <label for="pageEnd">Page end (PDF/DOCX)</label>
+            <input id="pageEnd" type="number" min="1" placeholder="10" />
+          </div>
+          <div class="field">
+            <label for="rowStart">Row start (xlsx/csv)</label>
+            <input id="rowStart" type="number" min="1" placeholder="1" />
+          </div>
+          <div class="field">
+            <label for="rowEnd">Row end (xlsx/csv)</label>
+            <input id="rowEnd" type="number" min="1" placeholder="200" />
+          </div>
+        </div>
+        <div class="field" id="excelTabsWrap" hidden>
+          <label for="excelSheetsSelect">Excel tabs to read</label>
+          <select id="excelSheetsSelect" multiple size="6"></select>
+          <small>Hold Ctrl/Cmd to select multiple tabs.</small>
+        </div>
+      </div>
+
+      <div class="field full">
+        <label>Reference files to include in GHCP context</label>
+        <div class="reference-selection">
+          <div>
+            <strong>Skills</strong>
+            <div id="skillsSelectionList" class="selection-list"></div>
+          </div>
+          <div>
+            <strong>Instructions</strong>
+            <div id="instructionsSelectionList" class="selection-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field full prompt-controls">
+        <button id="savePromptBtn" type="button" class="ghost-btn" hidden>Save Prompt</button>
+      </div>
+      <div class="field full">
+        <label for="savedPromptSelect">Load saved prompt</label>
+        <select id="savedPromptSelect">
+          <option value="">Select a saved prompt keyword</option>
+        </select>
+        <small>Choosing a keyword auto-loads the saved prompt text.</small>
+      </div>
+      <div class="field full">
+        <label for="ghcpSourceContext">Optional source context</label>
+        <textarea id="ghcpSourceContext" rows="6" placeholder="Optional supporting context that should be passed to GHCP as raw requirement text."></textarea>
+      </div>
+      <div class="field full">
+        <label for="sourcePreviewBox">Parsed content being sent to GHCP (editable)</label>
+        <textarea id="sourcePreviewBox" rows="12" placeholder="Click Preview Content Sent To GHCP to load parsed file content. You can then edit this content before generation."></textarea>
+      </div>
+      <div class="field full prompt-controls">
+        <button id="previewSourceBtn" type="button" class="ghost-btn">Preview Content Sent To GHCP</button>
+      </div>
     </section>
 
     <section class="card result" id="resultSection" hidden>

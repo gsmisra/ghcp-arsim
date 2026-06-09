@@ -138,15 +138,13 @@ flowchart LR
   ORCH[QE Orchestrator<br/>core-logic/qe_service.py]
   SRC[Source Connectors<br/>Document / Confluence / Jira]
   CHUNK[Chunking + Semantic Context]
-  EMB[Embeddings API<br/>LLM_EMBEDDINGS_PATH]
-  RANK[Similarity Ranking<br/>Top-N relevant chunks]
-  CHAT[Chat Completions API<br/>LLM_CHAT_COMPLETIONS_PATH]
+  CHAT[GHCP Bridge API<br/>/v1/generate]
   GEN[Generators<br/>BDD + Jira CSV]
   OUT[Output Store<br/>output/]
   PREV[Preview/Download APIs]
   CLEAN[Post-Download Cleanup<br/>output + temp_uploads]
 
-  U --> UI --> API --> ORCH --> SRC --> CHUNK --> EMB --> RANK --> CHAT --> GEN --> OUT --> PREV --> UI
+  U --> UI --> API --> ORCH --> SRC --> CHUNK --> CHAT --> GEN --> OUT --> PREV --> UI
   PREV --> CLEAN
         </div>
       </article>
@@ -161,24 +159,17 @@ sequenceDiagram
   participant Flask as Flask API
   participant Service as QE Service
   participant Reader as Source Reader
-  participant Sem as Semantic Generator
-  participant Emb as Embeddings API
-  participant LLM as Chat LLM API
+  participant LLM as GHCP Bridge API
   participant Gen as BDD/CSV Generator
   participant Store as output/
 
   User->>Browser: Select source + provide inputs
-  Browser->>Flask: POST /api/generate/* (config-driven route)
-  Flask->>Service: process_document/process_confluence/process_jira
+  Browser->>Flask: POST /api/ghcp/source-preview and /api/ghcp/package-and-generate
+  Flask->>Service: Build scoped requirement artifact
   Service->>Reader: Read requirement text from source
   Reader-->>Service: Normalized requirement artifact
-  Service->>Sem: generate(artifact)
-  Sem->>Emb: Embed query + chunks
-  Emb-->>Sem: Vectors
-  Sem->>Sem: Rank chunks by cosine similarity
-  Sem->>LLM: Chat completion with top-ranked context
-  LLM-->>Sem: Structured JSON test cases
-  Sem-->>Service: GeneratedTestCase[]
+  Service->>LLM: GHCP bridge command/generate
+  LLM-->>Service: Structured JSON test cases
   Service->>Gen: Write BDD feature or Jira CSV
   Gen->>Store: Persist generated files
   Service-->>Flask: Output file paths
@@ -196,37 +187,31 @@ sequenceDiagram
           <li>Browser opens configured base URL from [app_config.properties](app_config.properties).</li>
           <li>UI JavaScript calls backend routes provided by [web_app.py](web_app.py).</li>
           <li>Backend orchestration executes in [core-logic/qe_service.py](core-logic/qe_service.py).</li>
-          <li>LLM calls are made from [core-logic/llm/semantic_generator.py](core-logic/llm/semantic_generator.py), not from frontend.</li>
+          <li>LLM calls are made from [core-logic/llm/ghcp_bridge_generator.py](core-logic/llm/ghcp_bridge_generator.py), not from frontend.</li>
         </ul>
       </article>
 
       <article class="card">
         <h2>Critical Config Controls</h2>
         <div class="mono">APP_BASE_URL
-APP_ROUTE_GENERATE_DOCUMENT
-APP_ROUTE_GENERATE_CONFLUENCE
-APP_ROUTE_GENERATE_JIRA
 APP_ROUTE_OUTPUT_CONTENT
 APP_ROUTE_OUTPUT_DOWNLOAD
 APP_OUTPUT_DIR
 APP_TEMP_UPLOAD_DIR
 APP_OUTPUT_RETENTION_KEEP_LOGS
-DEFAULT_GENERATION_MODE=semantic_llm
-LLM_API_BASE_URL
-LLM_CHAT_COMPLETIONS_PATH
-LLM_EMBEDDINGS_PATH
-LLM_API_KEY
-LLM_MODEL
-EMBEDDING_MODEL</div>
+DEFAULT_GENERATION_MODE=ghcp_bridge_strict
+    GHCP_BRIDGE_BASE_URL
+    GHCP_BRIDGE_TIMEOUT_SECONDS
+    GHCP_BRIDGE_MAX_CASES
+</div>
       </article>
 
       <article class="card full">
         <h2>Why instructions.md and skills.md Exist</h2>
         <ul>
-          <li><strong>instructions/instructions.md</strong> is the operating playbook. It tells the platform how to run, what flows are supported, security expectations, and extension guidance.</li>
-          <li><strong>skills/skills.md</strong> is the capability catalog. It defines what the QE agentic system can do (ingest, parse, synthesize, generate BDD/CSV) and what rules each capability should follow.</li>
-          <li>Together, these files act as governance and behavior context for the team: one is process-oriented, the other is capability-oriented.</li>
-        </ul>
+GHCP_BRIDGE_BASE_URL
+GHCP_BRIDGE_TIMEOUT_SECONDS
+GHCP_BRIDGE_MAX_CASES
       </article>
 
       <article class="card full">

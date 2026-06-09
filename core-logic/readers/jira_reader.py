@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import requests
 
 from config_loader import Config
+from readers.document_reader import DocumentReader
 from models.requirement import RequirementArtifact
 
 
@@ -17,6 +20,9 @@ class JiraReader:
             self.config.get("JIRA_API_TOKEN"),
         )
         self.verify_tls = self.config.get_bool("VERIFY_TLS", True)
+        self.temp_dir = Path(self.config.get("APP_TEMP_UPLOAD_DIR", "temp_uploads")) / "jira_attachments"
+        self.max_attachment_bytes = self.config.get_int("JIRA_MAX_ATTACHMENT_BYTES", 10485760)
+        self.document_reader = DocumentReader()
 
     def read_stories(
         self,
@@ -33,6 +39,7 @@ class JiraReader:
             description = self._flatten_description(fields.get("description"))
             acceptance = fields.get("customfield_10000", "")
             comments = self._fetch_comments(story_id, auth)
+            attachments = self._fetch_attachments_text(story_id, fields.get("attachment", []), auth)
 
             text_parts = [
                 f"Story ID: {story_id}",
@@ -43,6 +50,8 @@ class JiraReader:
                 str(acceptance),
                 "Comments:",
                 comments,
+                "Attachments:",
+                attachments,
             ]
 
             artifacts.append(
@@ -79,6 +88,39 @@ class JiraReader:
             if body.strip():
                 flattened.append(body)
         return "\n\n".join(flattened)
+
+    def _fetch_attachments_text(self, story_id: str, attachments: list[dict], auth: tuple[str, str]) -> str:
+        if not attachments:
+            return ""
+
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        supported = {".docx", ".xlsx", ".pdf", ".csv"}
+        parts: list[str] = []
+
+        for item in attachments:
+            file_name = str(item.get("filename", "")).strip()
+            content_url = str(item.get("content", "")).strip()
+            size = int(item.get("size", 0) or 0)
+
+            suffix = Path(file_name).suffix.lower()
+            if suffix not in supported or not content_url:
+                continue
+            if size > self.max_attachment_bytes:
+                parts.append(f"Attachment skipped due to size limit: {file_name}")
+                continue
+
+            local_name = f"{story_id}_{Path(file_name).name}"
+            local_path = self.temp_dir / local_name
+            try:
+                response = requests.get(content_url, auth=auth, timeout=60, verify=self.verify_tls)
+                response.raise_for_status()
+                local_path.write_bytes(response.content)
+                parsed = self.document_reader.read(str(local_path)).raw_text
+                parts.append(f"Attachment: {file_name}\n{parsed}")
+            except Exception as ex:
+                parts.append(f"Attachment read failed: {file_name} ({ex})")
+
+        return "\n\n".join(parts)
 
     def _flatten_description(self, description: object) -> str:
         if description is None:

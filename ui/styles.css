@@ -254,6 +254,104 @@ button:hover {
   margin-top: 0;
 }
 
+.ghcp-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.prompt-controls {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.doc-scope {
+  padding: 14px;
+  border: 1px solid #d8e2ea;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reference-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.selection-list {
+  margin-top: 8px;
+  border: 1px solid #d8e2ea;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+  max-height: 180px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.selection-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 500;
+}
+
+.selection-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.selection-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.ghcp-panel-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ghcp-panel-header h2 {
+  margin: 4px 0 0;
+}
+
+.bridge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.bridge-status.ok {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.bridge-status.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.bridge-status.error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .result[hidden] {
   display: none;
 }
@@ -401,6 +499,11 @@ footer {
   }
 
   .field-cluster {
+    grid-template-columns: 1fr;
+  }
+
+  .scope-grid,
+  .reference-selection {
     grid-template-columns: 1fr;
   }
 

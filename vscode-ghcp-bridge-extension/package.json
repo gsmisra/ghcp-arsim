@@ -1,0 +1,69 @@
+{
+  "name": "ghcp-local-bridge",
+  "displayName": "GHCP Local Bridge",
+  "description": "Localhost bridge running inside VS Code extension host for GHCP prompt/response automation.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ghcpBridge.start",
+        "title": "GHCP Bridge: Start Server"
+      },
+      {
+        "command": "ghcpBridge.stop",
+        "title": "GHCP Bridge: Stop Server"
+      }
+    ],
+    "configuration": {
+      "title": "GHCP Local Bridge",
+      "properties": {
+        "ghcpBridge.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start GHCP local bridge server when VS Code starts."
+        },
+        "ghcpBridge.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host for GHCP local bridge HTTP server."
+        },
+        "ghcpBridge.port": {
+          "type": "number",
+          "default": 8765,
+          "description": "Port for GHCP local bridge HTTP server."
+        },
+        "ghcpBridge.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional bearer token required by bridge endpoints."
+        },
+        "ghcpBridge.maxConcurrentRequests": {
+          "type": "number",
+          "default": 2,
+          "description": "Maximum simultaneous generation requests."
+        },
+        "ghcpBridge.adapterCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Command that performs GHCP request/response. Must support {request_file} and {response_file} placeholders."
+        },
+        "ghcpBridge.adapterTimeoutMs": {
+          "type": "number",
+          "default": 180000,
+          "description": "Timeout for adapter command in milliseconds."
+        }
+      }
+    }
+  }
+}
