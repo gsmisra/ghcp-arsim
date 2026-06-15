@@ -3,9 +3,11 @@ from __future__ import annotations
 import csv
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
@@ -61,18 +63,23 @@ class DocumentReader:
             raise ValueError("DOCX page_start must be >= 1")
 
         pages: list[list[str]] = [[]]
-        all_paragraphs: list[str] = []
+        all_blocks: list[str] = []
         has_explicit_page_break = False
-        for paragraph in doc.paragraphs:
-            text = paragraph.text.strip()
+        for block in self._iter_docx_blocks(doc):
+            text = self._docx_block_to_text(block)
             if text:
-                all_paragraphs.append(text)
+                all_blocks.append(text)
                 pages[-1].append(text)
 
-            paragraph_xml = paragraph._p.xml
-            page_break_before = "pageBreakBefore" in paragraph_xml
-            page_break_after = 'w:type="page"' in paragraph_xml
+            block_xml = block._element.xml
+            page_break_before = "pageBreakBefore" in block_xml
+            page_break_after = 'w:type="page"' in block_xml
+            rendered_page_break = "lastRenderedPageBreak" in block_xml
             if page_break_before or page_break_after:
+                has_explicit_page_break = True
+                pages.append([])
+            elif rendered_page_break:
+                # Word may persist rendered page breaks without explicit manual breaks.
                 has_explicit_page_break = True
                 pages.append([])
 
@@ -81,12 +88,25 @@ class DocumentReader:
             content_pages = [page for page in content_pages if page]
         else:
             # Many DOCX files do not store true rendered page boundaries.
-            # Fallback: deterministic pagination by paragraph chunks so page ranges still work.
-            paragraphs_per_page = int(options.get("docx_paragraphs_per_page", 30) or 30)
-            paragraphs_per_page = max(1, paragraphs_per_page)
+            # Fallback: deterministic pagination by character budget to keep
+            # page ranges meaningful for preview/generation.
+            chars_per_page = int(options.get("docx_chars_per_page", 3500) or 3500)
+            chars_per_page = max(500, chars_per_page)
             content_pages = []
-            for index in range(0, len(all_paragraphs), paragraphs_per_page):
-                content_pages.append("\n".join(all_paragraphs[index:index + paragraphs_per_page]).strip())
+            current_page: list[str] = []
+            current_chars = 0
+            for block in all_blocks:
+                block_chars = max(1, len(block))
+                if current_page and current_chars + block_chars > chars_per_page:
+                    content_pages.append("\n".join(current_page).strip())
+                    current_page = [block]
+                    current_chars = block_chars
+                else:
+                    current_page.append(block)
+                    current_chars += block_chars
+
+            if current_page:
+                content_pages.append("\n".join(current_page).strip())
             content_pages = [page for page in content_pages if page]
 
         if not content_pages:
@@ -102,6 +122,25 @@ class DocumentReader:
         return "\n\n".join(
             f"## Page {index + effective_page_start}\n{page}" for index, page in enumerate(sliced_pages)
         )
+
+    def _iter_docx_blocks(self, doc: Document) -> Iterator[Paragraph | Table]:
+        body = doc._element.body
+        for child in body.iterchildren():
+            if child.tag.endswith("}p"):
+                yield Paragraph(child, doc)
+            elif child.tag.endswith("}tbl"):
+                yield Table(child, doc)
+
+    def _docx_block_to_text(self, block: Paragraph | Table) -> str:
+        if isinstance(block, Paragraph):
+            return block.text.strip()
+
+        rows: list[str] = []
+        for row in block.rows:
+            cols = [" ".join(cell.text.split()).strip() for cell in row.cells]
+            if any(col for col in cols):
+                rows.append(" | ".join(cols))
+        return "\n".join(rows).strip()
 
     def _read_xlsx(self, path: Path, options: dict[str, Any] | None = None) -> str:
         options = options or {}

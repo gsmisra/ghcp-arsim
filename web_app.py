@@ -114,7 +114,94 @@ def _call_ghcp_bridge(payload: dict) -> dict:
             bridge_error = response.text or bridge_error
         raise RuntimeError(f"GHCP bridge returned {response.status_code}: {bridge_error}")
 
-    return response.json()
+    try:
+        response_payload = response.json()
+    except ValueError as error:
+        raise RuntimeError(f"GHCP bridge returned non-JSON response: {error}") from error
+
+    _validate_bridge_response_schema(response_payload)
+    return response_payload
+
+
+def _validate_bridge_response_schema(payload: dict) -> None:
+    if not isinstance(payload, dict):
+        raise RuntimeError("GHCP bridge response must be a JSON object.")
+
+    test_cases = payload.get("test_cases")
+    if not isinstance(test_cases, list) or not test_cases:
+        raise RuntimeError("GHCP bridge response must include a non-empty 'test_cases' array.")
+
+    required_arrays = ("preconditions", "steps", "expected_results", "tags", "examples")
+    for index, item in enumerate(test_cases):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"test_cases[{index}] must be an object.")
+
+        for field in ("scenario_name", "objective"):
+            value = item.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise RuntimeError(f"test_cases[{index}].{field} must be a non-empty string.")
+
+        for field in required_arrays:
+            if not isinstance(item.get(field), list):
+                raise RuntimeError(f"test_cases[{index}].{field} must be an array.")
+
+
+def _build_structured_instruction(base_prompt: str, selected_meta: dict) -> str:
+    selected_skills = selected_meta.get("selected_skills", [])
+    selected_instructions = selected_meta.get("selected_instructions", [])
+
+    parts = [
+        "SYSTEM ROLE:\nYou are an enterprise QE assistant that generates grounded test cases from provided context only.",
+        (
+            "OUTPUT CONTRACT:\n"
+            "Return valid JSON only with top-level key 'test_cases'.\n"
+            "Each item must include: scenario_name, objective, preconditions, steps, expected_results, tags, examples."
+        ),
+        "SELECTED SKILLS:\n" + (", ".join(selected_skills) if selected_skills else "None selected."),
+        "SELECTED INSTRUCTIONS:\n" + (", ".join(selected_instructions) if selected_instructions else "None selected."),
+        "REQUIREMENT CONTEXT:\nUse only the supplied requirement content and avoid unsupported assumptions.",
+    ]
+
+    prompt_clean = _normalize_multiline_field(base_prompt)
+    if prompt_clean:
+        parts.insert(1, f"USER OBJECTIVE:\n{prompt_clean}")
+    return "\n\n".join(parts)
+
+
+def _get_context_limits() -> tuple[int, int]:
+    warn_chars = config.get_int("GHCP_CONTEXT_WARN_CHARS", 80000)
+    max_chars = config.get_int("GHCP_CONTEXT_MAX_CHARS", 120000)
+    if warn_chars <= 0:
+        warn_chars = 80000
+    if max_chars <= 0:
+        max_chars = 120000
+    if warn_chars > max_chars:
+        warn_chars = max_chars
+    return warn_chars, max_chars
+
+
+def _context_guardrails(context: str, enforce_max: bool) -> list[str]:
+    warnings: list[str] = []
+    warn_chars, max_chars = _get_context_limits()
+    context_len = len(context)
+
+    if context_len >= warn_chars:
+        warnings.append(
+            f"Context size is high ({context_len} chars). Consider narrowing source scope before generation."
+        )
+    if enforce_max and context_len > max_chars:
+        raise ValueError(
+            f"Context size ({context_len} chars) exceeds max allowed size ({max_chars}). Narrow the selected content and retry."
+        )
+    return warnings
+
+
+def _validate_bdd_content(feature_text: str) -> None:
+    normalized = _normalize_multiline_field(feature_text)
+    if "Feature:" not in normalized:
+        raise RuntimeError("Generated BDD output is invalid: missing 'Feature:' line.")
+    if "Scenario:" not in normalized and "Scenario Outline:" not in normalized:
+        raise RuntimeError("Generated BDD output is invalid: missing 'Scenario:' or 'Scenario Outline:' line.")
 
 
 def _coerce_generated_test_cases(items: list[dict]) -> list[GeneratedTestCase]:
@@ -323,60 +410,105 @@ def _append_markdown_section(lines: list[str], heading: str, value: str, require
 
 
 def _build_skill_markdown(target_name: str, payload: dict) -> str:
-    title = _normalize_multiline_field(payload.get("title", ""))
+    _f = lambda key: _normalize_multiline_field(payload.get(key, ""))
+    title = _f("title")
     lines = [f"# {title}", ""]
 
-    _append_markdown_section(lines, "Purpose", _normalize_multiline_field(payload.get("purpose", "")), required=True)
-    _append_markdown_section(lines, "Scope", _normalize_multiline_field(payload.get("scope", "")))
-    _append_markdown_section(lines, "Business Context", _normalize_multiline_field(payload.get("business_context", "")))
-    _append_markdown_section(lines, "Inputs", _normalize_multiline_field(payload.get("inputs", "")))
-    _append_markdown_section(lines, "Preconditions", _normalize_multiline_field(payload.get("preconditions", "")))
-    _append_markdown_section(lines, "Actions", _normalize_multiline_field(payload.get("actions", "")))
-    _append_markdown_section(lines, "Rules and Validations", _normalize_multiline_field(payload.get("rules", "")))
-    _append_markdown_section(lines, "Outputs", _normalize_multiline_field(payload.get("outputs", "")))
-    _append_markdown_section(lines, "Dependencies", _normalize_multiline_field(payload.get("dependencies", "")))
-    _append_markdown_section(lines, "Limitations", _normalize_multiline_field(payload.get("limitations", "")))
+    _append_markdown_section(lines, "Purpose", _f("purpose"), required=True)
+
+    optional_sections = [
+        ("Domain", "domain"),
+        ("Scope", "scope"),
+        ("Business Context", "business_context"),
+        ("Inputs", "inputs"),
+        ("Preconditions", "preconditions"),
+        ("Actions", "actions"),
+        ("Rules and Validations", "rules"),
+        ("Test Types", "test_types"),
+        ("Test Data Requirements", "data_requirements"),
+        ("Environment", "environment"),
+        ("Outputs", "outputs"),
+        ("Edge Cases", "edge_cases"),
+        ("Non-Functional Requirements", "non_functional"),
+        ("Compliance and Regulatory", "compliance"),
+        ("Integration Points", "integration_points"),
+        ("Dependencies", "dependencies"),
+        ("Limitations", "limitations"),
+        ("Priority Classification", "priority"),
+        ("Glossary", "glossary"),
+        ("Examples", "examples"),
+        ("Success Metrics", "success_metrics"),
+    ]
+    for heading, key in optional_sections:
+        value = _f(key)
+        if value:
+            _append_markdown_section(lines, heading, value)
 
     lines.extend([
         "## Ownership",
-        f"- Owner: {_normalize_multiline_field(payload.get('owner', '')) or 'Not provided'}",
-        f"- Reviewers: {_normalize_multiline_field(payload.get('reviewers', '')) or 'Not provided'}",
-        f"- Version: {_normalize_multiline_field(payload.get('version', '')) or 'Not provided'}",
-        f"- Tags: {_normalize_multiline_field(payload.get('tags', '')) or 'Not provided'}",
+        f"- Owner: {_f('owner') or 'Not provided'}",
+        f"- Reviewers: {_f('reviewers') or 'Not provided'}",
+        f"- Version: {_f('version') or 'Not provided'}",
+        f"- Tags: {_f('tags') or 'Not provided'}",
         f"- File: {target_name}",
         "",
     ])
 
-    _append_markdown_section(lines, "Examples", _normalize_multiline_field(payload.get("examples", "")))
-    _append_markdown_section(lines, "Success Metrics", _normalize_multiline_field(payload.get("success_metrics", "")))
+    change_log = _f("change_log")
+    if change_log:
+        _append_markdown_section(lines, "Change Log", change_log)
+
     return "\n".join(lines)
 
 
 def _build_instruction_markdown(target_name: str, payload: dict) -> str:
-    title = _normalize_multiline_field(payload.get("title", ""))
+    _f = lambda key: _normalize_multiline_field(payload.get(key, ""))
+    title = _f("title")
     lines = [f"# {title}", ""]
 
-    _append_markdown_section(lines, "Objective", _normalize_multiline_field(payload.get("objective", "")), required=True)
-    _append_markdown_section(lines, "Audience", _normalize_multiline_field(payload.get("audience", "")))
-    _append_markdown_section(lines, "Prerequisites", _normalize_multiline_field(payload.get("prerequisites", "")))
-    _append_markdown_section(lines, "Inputs", _normalize_multiline_field(payload.get("inputs", "")))
-    _append_markdown_section(lines, "Steps", _normalize_multiline_field(payload.get("steps", "")), required=True)
-    _append_markdown_section(lines, "Validation and Acceptance", _normalize_multiline_field(payload.get("validation", "")))
-    _append_markdown_section(lines, "Rollback/Contingency", _normalize_multiline_field(payload.get("rollback", "")))
-    _append_markdown_section(lines, "References", _normalize_multiline_field(payload.get("references", "")))
-    _append_markdown_section(lines, "Notes", _normalize_multiline_field(payload.get("notes", "")))
-    _append_markdown_section(lines, "Risks", _normalize_multiline_field(payload.get("risks", "")))
+    _append_markdown_section(lines, "Objective", _f("objective"), required=True)
+
+    optional_sections = [
+        ("Domain", "domain"),
+        ("Audience", "audience"),
+        ("Prerequisites", "prerequisites"),
+        ("Inputs", "inputs"),
+        ("Steps", "steps"),
+        ("Expected Duration", "expected_duration"),
+        ("Exit Criteria", "exit_criteria"),
+        ("Validation and Acceptance", "validation"),
+        ("Environment", "environment"),
+        ("Tooling", "tooling"),
+        ("Compliance and Regulatory", "compliance"),
+        ("Security Considerations", "security"),
+        ("Rollback/Contingency", "rollback"),
+        ("Escalation Path", "escalation"),
+        ("Communication Plan", "communication"),
+        ("References", "references"),
+        ("Notes", "notes"),
+        ("Risks", "risks"),
+        ("Glossary", "glossary"),
+    ]
+    for heading, key in optional_sections:
+        value = _f(key)
+        if value:
+            _append_markdown_section(lines, heading, value)
 
     lines.extend([
         "## Governance",
-        f"- Owner: {_normalize_multiline_field(payload.get('owner', '')) or 'Not provided'}",
-        f"- Approvers: {_normalize_multiline_field(payload.get('approvers', '')) or 'Not provided'}",
-        f"- Frequency: {_normalize_multiline_field(payload.get('frequency', '')) or 'Not provided'}",
-        f"- SLA/Target timeline: {_normalize_multiline_field(payload.get('sla', '')) or 'Not provided'}",
-        f"- Tags: {_normalize_multiline_field(payload.get('tags', '')) or 'Not provided'}",
+        f"- Owner: {_f('owner') or 'Not provided'}",
+        f"- Approvers: {_f('approvers') or 'Not provided'}",
+        f"- Frequency: {_f('frequency') or 'Not provided'}",
+        f"- SLA/Target timeline: {_f('sla') or 'Not provided'}",
+        f"- Tags: {_f('tags') or 'Not provided'}",
         f"- File: {target_name}",
         "",
     ])
+
+    change_log = _f("change_log")
+    if change_log:
+        _append_markdown_section(lines, "Change Log", change_log)
+
     return "\n".join(lines)
 
 
@@ -388,7 +520,10 @@ def index():
         "referenceFilesRoute": "/api/reference-files",
         "createSkillRoute": "/api/skills/create",
         "createInstructionRoute": "/api/instructions/create",
+        "uploadSkillRoute": "/api/skills/upload",
+        "uploadInstructionRoute": "/api/instructions/upload",
         "ghcpBridgeHealthRoute": "/api/ghcp/health",
+        "ghcpTestConnectionRoute": "/api/ghcp/test-connection",
         "ghcpPackageRoute": "/api/ghcp/package-and-generate",
         "ghcpSourcePreviewRoute": "/api/ghcp/source-preview",
         "documentSheetsRoute": "/api/document/sheets",
@@ -501,7 +636,8 @@ def create_skill_file():
     if target.exists():
         return jsonify({"error": "A skill file with that name already exists."}), 400
 
-    content = _build_skill_markdown(target.name, payload)
+    markdown_override = payload.get("markdown_override", "")
+    content = markdown_override.strip() if markdown_override.strip() else _build_skill_markdown(target.name, payload)
     target.write_text(content, encoding="utf-8")
     return jsonify({"file": target.name})
 
@@ -523,9 +659,46 @@ def create_instruction_file():
     if target.exists():
         return jsonify({"error": "An instruction file with that name already exists."}), 400
 
-    content = _build_instruction_markdown(target.name, payload)
+    markdown_override = payload.get("markdown_override", "")
+    content = markdown_override.strip() if markdown_override.strip() else _build_instruction_markdown(target.name, payload)
     target.write_text(content, encoding="utf-8")
     return jsonify({"file": target.name})
+
+
+def _handle_md_upload(directory: Path, kind: str):
+    uploaded = request.files.get("file")
+    if not uploaded or not uploaded.filename:
+        return jsonify({"error": "No file provided."}), 400
+
+    original_name = Path(uploaded.filename).name
+    if not original_name.lower().endswith(".md"):
+        return jsonify({"error": "Only .md files are accepted."}), 400
+
+    try:
+        target = _safe_target_file(directory, original_name)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    if target.exists():
+        return jsonify({"error": f"A {kind} file named '{target.name}' already exists."}), 400
+
+    content_bytes = uploaded.read()
+    if not content_bytes.strip():
+        return jsonify({"error": "Uploaded file is empty."}), 400
+
+    # Persist uploaded markdown byte-for-byte to avoid altering original content.
+    target.write_bytes(content_bytes)
+    return jsonify({"file": target.name})
+
+
+@app.route("/api/skills/upload", methods=["POST"])
+def upload_skill_file():
+    return _handle_md_upload(SKILLS_DIR, "skill")
+
+
+@app.route("/api/instructions/upload", methods=["POST"])
+def upload_instruction_file():
+    return _handle_md_upload(INSTRUCTIONS_DIR, "instruction")
 
 
 @app.route("/api/ghcp/package-and-generate", methods=["POST"])
@@ -536,10 +709,11 @@ def ghcp_package_and_generate():
         parsed_override = _normalize_multiline_field(request.form.get("parsed_override", ""))
         selected_reference_meta, reference_context = _collect_reference_context(request)
         combined_context = _resolve_final_context(artifact, source_context, reference_context, parsed_override)
+        context_warnings = _context_guardrails(combined_context, enforce_max=True)
 
         max_cases = config.get_int("GHCP_BRIDGE_MAX_CASES", 5)
         bridge_payload = {
-            "instruction": prompt,
+            "instruction": _build_structured_instruction(prompt, selected_reference_meta),
             "max_cases": max_cases,
             "artifact": {
                 "source_type": artifact.source_type,
@@ -555,6 +729,7 @@ def ghcp_package_and_generate():
                 "title": artifact.title,
                 "metadata": {**artifact.metadata, **selected_reference_meta},
             },
+            "warnings": context_warnings,
             "response": response_payload,
         })
     except ValueError as error:
@@ -573,15 +748,17 @@ def ghcp_source_preview():
         parsed_override = _normalize_multiline_field(request.form.get("parsed_override", ""))
         selected_reference_meta, reference_context = _collect_reference_context(request)
         combined_context = _resolve_final_context(artifact, source_context, reference_context, parsed_override)
+        context_warnings = _context_guardrails(combined_context, enforce_max=False)
 
         return jsonify(
             {
-                "prompt": prompt,
+                "prompt": _build_structured_instruction(prompt, selected_reference_meta),
                 "artifact": {
                     "source_type": artifact.source_type,
                     "title": artifact.title,
                     "metadata": {**artifact.metadata, **selected_reference_meta},
                 },
+                "warnings": context_warnings,
                 "combined_context": combined_context,
             }
         )
@@ -630,7 +807,30 @@ def ghcp_save_feature():
     )
 
     output_path = service.bdd_generator.write_feature_file(artifact, cases, OUTPUT_DIR)
+    _validate_bdd_content(output_path.read_text(encoding="utf-8", errors="replace"))
     return jsonify({"file": output_path.name, "path": str(output_path)})
+
+
+@app.route("/api/ghcp/test-connection", methods=["POST"])
+def ghcp_test_connection():
+    headers = {"Content-Type": "application/json"}
+    if GHCP_BRIDGE_AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {GHCP_BRIDGE_AUTH_TOKEN}"
+
+    try:
+        response = requests.post(
+            f"{GHCP_BRIDGE_BASE_URL}/v1/test-connection",
+            headers=headers,
+            json={},
+            timeout=60,
+        )
+        payload = response.json()
+        payload["bridge_url"] = GHCP_BRIDGE_BASE_URL
+        if response.status_code >= 400:
+            return jsonify(payload), response.status_code
+        return jsonify(payload)
+    except requests.RequestException as error:
+        return jsonify({"status": "error", "error": f"GHCP bridge unavailable: {error}", "bridge_url": GHCP_BRIDGE_BASE_URL}), 502
 
 
 @app.route("/api/ghcp/health", methods=["GET"])

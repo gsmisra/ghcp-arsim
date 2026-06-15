@@ -1,10 +1,19 @@
 # GHCP Local Bridge Extension
 
 This extension starts a localhost HTTP server inside VS Code extension host.
+It only uses the VS Code Language Model API (GitHub Copilot chat models).
 
 ## Endpoints
 - GET /health
 - POST /v1/generate
+
+## Health response
+GET /health returns:
+- status
+- modelsAvailable
+- modelCount
+- mode (vscode-language-model-api)
+- activeRequests
 
 ## Request contract for POST /v1/generate
 Input JSON should include:
@@ -22,21 +31,11 @@ Output JSON must include:
 - ghcpBridge.port
 - ghcpBridge.authToken
 - ghcpBridge.maxConcurrentRequests
-- ghcpBridge.adapterCommand
-- ghcpBridge.adapterTimeoutMs
 
-## Adapter command
-If configured, the extension executes ghcpBridge.adapterCommand and replaces:
-- {request_file}
-- {response_file}
-
-The adapter command must read request JSON and write response JSON with test_cases.
-
-## Default behavior
-If ghcpBridge.adapterCommand is empty, the extension uses the VS Code language model API directly and returns the model response as test_cases JSON.
-
-## Optional fallback template
-The repository includes a PowerShell Windows chat-window template for teams that want manual UI automation against a VS Code GHCP chat panel. Use it only if you need window-driven automation.
+## Behavior
+The extension uses vscode.lm.selectChatModels() and model.sendRequest() directly.
+Responses are validated and must contain a non-empty test_cases array.
+Malformed JSON/BDD responses are rejected.
 
 ## Start and stop
 Commands:

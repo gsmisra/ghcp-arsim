@@ -19,6 +19,7 @@
       <button id="addSkillBtn" type="button">Add new skill</button>
       <button id="addInstructionBtn" type="button">Add new Instruction</button>
       <button id="devDocsBtn" type="button" class="ghost-btn">Dev Docs</button>
+      <button id="testConnectionBtn" type="button" class="ghost-btn">Test Connection</button>
     </div>
   </div>
   <main class="shell">
@@ -87,9 +88,6 @@
         </div>
       </div>
 
-      <div class="actions full">
-        <button id="generateBtn" type="submit">Generate Detailed Test Cases</button>
-      </div>
       </form>
     </section>
 
@@ -105,6 +103,16 @@
         <label for="ghcpPrompt">Prompt</label>
         <textarea id="ghcpPrompt" rows="8" placeholder="Paste the requirement text, acceptance criteria, or a custom test-generation prompt here."></textarea>
         <small>Tip: you can paste extracted document text, Jira story text, or a custom prompt. The bridge will return JSON test cases, and the UI will render them as BDD output.</small>
+      </div>
+      <div class="field full prompt-controls">
+        <button id="savePromptBtn" type="button" class="ghost-btn" hidden>Save Prompt</button>
+      </div>
+      <div class="field full">
+        <label for="savedPromptSelect">Load saved prompt</label>
+        <select id="savedPromptSelect">
+          <option value="">Select a saved prompt keyword</option>
+        </select>
+        <small>Choosing a keyword auto-loads the saved prompt text.</small>
       </div>
 
       <div class="field full doc-scope" id="documentScope" hidden>
@@ -149,16 +157,6 @@
         </div>
       </div>
 
-      <div class="field full prompt-controls">
-        <button id="savePromptBtn" type="button" class="ghost-btn" hidden>Save Prompt</button>
-      </div>
-      <div class="field full">
-        <label for="savedPromptSelect">Load saved prompt</label>
-        <select id="savedPromptSelect">
-          <option value="">Select a saved prompt keyword</option>
-        </select>
-        <small>Choosing a keyword auto-loads the saved prompt text.</small>
-      </div>
       <div class="field full">
         <label for="ghcpSourceContext">Optional source context</label>
         <textarea id="ghcpSourceContext" rows="6" placeholder="Optional supporting context that should be passed to GHCP as raw requirement text."></textarea>
@@ -186,6 +184,10 @@
       <h3>File Preview</h3>
       <pre id="previewBox">Select a generated file and click Preview File.</pre>
     </section>
+
+    <div class="actions full generate-bottom" id="generateWrap" hidden>
+      <button id="generateBtn" type="button">Generate Detailed Test Cases</button>
+    </div>
   </main>
 
   <section class="wizard-overlay" id="wizardOverlay" hidden>
@@ -193,6 +195,10 @@
       <div class="wizard-header">
         <h2 id="wizardTitle">Create file</h2>
         <button id="closeWizardBtn" type="button" class="ghost-btn">Close</button>
+      </div>
+      <div id="wizardDropZone" class="wizard-drop-zone">
+        <input id="wizardFileInput" type="file" accept=".md" />
+        <p>Or drag and drop an existing .md file here to upload directly</p>
       </div>
       <p id="wizardStepMeta" class="wizard-meta">Step 1 of 1 | Required</p>
       <p id="wizardPrompt" class="muted">Follow the guided steps.</p>
@@ -207,12 +213,29 @@
         <label for="wizardPreview">Live markdown preview</label>
         <div id="wizardPreview" class="wizard-preview">Preview will appear here as markdown.</div>
       </div>
+      <div class="field wizard-edit-wrap">
+        <label for="wizardEditArea" id="wizardEditLabel" hidden>Editable Markdown Preview</label>
+        <textarea id="wizardEditArea" rows="16" hidden></textarea>
+      </div>
       <div class="action-buttons wizard-actions">
+        <button id="wizardBackBtn" type="button" class="ghost-btn" hidden>Back</button>
         <button id="wizardNextBtn" type="button">Next</button>
-        <button id="wizardSubmitBtn" type="button" hidden>Submit</button>
+        <button id="wizardSubmitBtn" type="button" hidden>Review & Save</button>
+        <button id="wizardSaveBtn" type="button" hidden>Save File</button>
       </div>
     </div>
   </section>
+
+  <div class="test-conn-overlay" id="testConnOverlay" hidden>
+    <div class="test-conn-modal">
+      <div class="test-conn-header">
+        <span class="test-conn-icon" id="testConnIcon"></span>
+        <strong id="testConnTitle">Testing connection...</strong>
+        <button id="closeTestConnBtn" type="button" class="ghost-btn">&times;</button>
+      </div>
+      <pre class="test-conn-body" id="testConnBody">Sending "Who are you?" to GHCP...</pre>
+    </div>
+  </div>
 
   <footer>TDS QE AGENTIC SOLUTION</footer>
   <script>

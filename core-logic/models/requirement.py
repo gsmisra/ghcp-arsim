@@ -19,9 +19,3 @@ class GeneratedTestCase:
     expected_results: List[str]
     tags: List[str]
     examples: List[dict] = field(default_factory=list)
-
-
-@dataclass
-class RankedRequirementChunk:
-    text: str
-    score: float

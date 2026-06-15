@@ -52,16 +52,6 @@
           "type": "number",
           "default": 2,
           "description": "Maximum simultaneous generation requests."
-        },
-        "ghcpBridge.adapterCommand": {
-          "type": "string",
-          "default": "",
-          "description": "Command that performs GHCP request/response. Must support {request_file} and {response_file} placeholders."
-        },
-        "ghcpBridge.adapterTimeoutMs": {
-          "type": "number",
-          "default": 180000,
-          "description": "Timeout for adapter command in milliseconds."
         }
       }
     }

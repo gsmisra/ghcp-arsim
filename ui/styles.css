@@ -352,6 +352,78 @@ button:hover {
   color: #b91c1c;
 }
 
+.test-conn-btn {
+  white-space: nowrap;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.test-conn-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-conn-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+
+.test-conn-modal {
+  width: min(560px, 100%);
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  animation: fadeUp 0.2s ease-out;
+}
+
+.test-conn-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.test-conn-header strong {
+  flex: 1;
+  font-size: 1.05rem;
+}
+
+.test-conn-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #d1d5db;
+}
+
+.test-conn-icon.ok {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.test-conn-icon.error {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+.test-conn-body {
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .result[hidden] {
   display: none;
 }
@@ -478,8 +550,51 @@ footer {
   font-style: italic;
 }
 
+.wizard-drop-zone {
+  border: 1px dashed #bfd0c1;
+  border-radius: 14px;
+  padding: 14px;
+  text-align: center;
+  background: #f9fcf9;
+  margin: 10px 0 4px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.wizard-drop-zone.dragover {
+  border-color: #008a00;
+  background: #ecfdf5;
+}
+
+.wizard-drop-zone p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.wizard-drop-zone input[type="file"] {
+  width: 100%;
+}
+
 .wizard-actions {
   margin-top: 14px;
+}
+
+.wizard-edit-wrap textarea {
+  min-height: 280px;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.generate-bottom {
+  text-align: center;
+  padding: 18px 0 4px;
+}
+
+.generate-bottom button {
+  min-width: 280px;
+  font-size: 1.05rem;
+  padding: 16px 28px;
 }
 
 @keyframes fadeUp {

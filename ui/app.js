@@ -55,6 +55,12 @@ const wizardPreview = document.getElementById('wizardPreview');
 const wizardNextBtn = document.getElementById('wizardNextBtn');
 const wizardSubmitBtn = document.getElementById('wizardSubmitBtn');
 const closeWizardBtn = document.getElementById('closeWizardBtn');
+const testConnectionBtn = document.getElementById('testConnectionBtn');
+const testConnOverlay = document.getElementById('testConnOverlay');
+const testConnIcon = document.getElementById('testConnIcon');
+const testConnTitle = document.getElementById('testConnTitle');
+const testConnBody = document.getElementById('testConnBody');
+const closeTestConnBtn = document.getElementById('closeTestConnBtn');
 const appConfig = window.APP_CONFIG || {};
 
 let generatedFiles = [];
@@ -69,8 +75,7 @@ let previewState = {
 
 function autoResizeSourcePreview() {
   sourcePreviewBoxEl.style.height = 'auto';
-  const maxHeight = Math.floor(window.innerHeight * 0.7);
-  sourcePreviewBoxEl.style.height = `${Math.min(sourcePreviewBoxEl.scrollHeight, maxHeight)}px`;
+  sourcePreviewBoxEl.style.height = `${Math.max(sourcePreviewBoxEl.scrollHeight, 240)}px`;
 }
 
 function resetDocumentScopeInputs() {
@@ -91,21 +96,32 @@ const wizardDefinitions = {
       { key: 'file_name', label: 'Skill file name', required: true, multiline: false, prompt: 'Enter the skill file name.', hint: 'Required. .md is auto-added if omitted. Example: api-regression-skill' },
       { key: 'title', label: 'Skill title', required: true, multiline: false, prompt: 'Enter a clear title for this skill.', hint: 'Required. Example: API Regression Test Case Generation' },
       { key: 'purpose', label: 'Purpose', required: true, multiline: true, prompt: 'Describe the purpose and expected outcome of this skill.', hint: 'Required. You can type multiple lines. Press Ctrl+Enter to continue.' },
+      { key: 'domain', label: 'Domain', required: false, multiline: false, prompt: 'Which business domain does this skill apply to?', hint: 'Optional. Example: Retail Banking, Payments, Wealth Management' },
       { key: 'scope', label: 'Scope', required: false, multiline: true, prompt: 'Describe scope boundaries (in/out of scope).', hint: 'Optional. Leave blank to skip.' },
-      { key: 'business_context', label: 'Business context', required: false, multiline: true, prompt: 'Describe the business domain context.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'business_context', label: 'Business context', required: false, multiline: true, prompt: 'Describe the business domain context and regulatory background.', hint: 'Optional. Leave blank to skip.' },
       { key: 'inputs', label: 'Inputs', required: false, multiline: true, prompt: 'List the main inputs this skill expects.', hint: 'Optional. Include source systems, formats, and constraints.' },
       { key: 'preconditions', label: 'Preconditions', required: false, multiline: true, prompt: 'List prerequisites before this skill can run.', hint: 'Optional. Leave blank to skip.' },
       { key: 'actions', label: 'Actions', required: false, multiline: true, prompt: 'Describe the steps this skill performs.', hint: 'Optional. Leave blank to skip.' },
       { key: 'rules', label: 'Rules and validations', required: false, multiline: true, prompt: 'List business/technical rules and validation checks.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'test_types', label: 'Test types', required: false, multiline: true, prompt: 'Which test types should this skill generate?', hint: 'Optional. Example: functional, negative, boundary, regression, security, accessibility' },
+      { key: 'data_requirements', label: 'Test data requirements', required: false, multiline: true, prompt: 'Describe test data needs — formats, masking, PII handling.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'environment', label: 'Environment', required: false, multiline: true, prompt: 'List target environments, browsers, or platforms.', hint: 'Optional. Example: SIT, UAT, Chrome, iOS Safari' },
       { key: 'outputs', label: 'Outputs', required: false, multiline: true, prompt: 'Describe outputs and deliverables.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'edge_cases', label: 'Edge cases', required: false, multiline: true, prompt: 'List edge cases and boundary conditions to always cover.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'non_functional', label: 'Non-functional requirements', required: false, multiline: true, prompt: 'Performance, load, security, or accessibility requirements.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'compliance', label: 'Compliance and regulatory', required: false, multiline: true, prompt: 'Compliance standards to verify (SOX, PCI-DSS, WCAG, etc.).', hint: 'Optional. Leave blank to skip.' },
+      { key: 'integration_points', label: 'Integration points', required: false, multiline: true, prompt: 'Upstream/downstream systems this skill interacts with.', hint: 'Optional. Leave blank to skip.' },
       { key: 'dependencies', label: 'Dependencies', required: false, multiline: true, prompt: 'List dependent services, tools, or files.', hint: 'Optional. Leave blank to skip.' },
       { key: 'limitations', label: 'Limitations', required: false, multiline: true, prompt: 'List known limitations or exclusions.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'priority', label: 'Priority classification', required: false, multiline: true, prompt: 'How should generated test cases be prioritized?', hint: 'Optional. Example: P1 = smoke, P2 = regression, P3 = exploratory' },
+      { key: 'glossary', label: 'Glossary', required: false, multiline: true, prompt: 'Define domain-specific terms or acronyms.', hint: 'Optional. Example: BRD = Business Requirements Document' },
+      { key: 'examples', label: 'Examples', required: false, multiline: true, prompt: 'Add usage examples showing input/output pairs.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'success_metrics', label: 'Success metrics', required: false, multiline: true, prompt: 'Define measurable success metrics.', hint: 'Optional. Leave blank to skip.' },
       { key: 'owner', label: 'Owner', required: false, multiline: false, prompt: 'Who owns this skill?', hint: 'Optional. Team or individual name.' },
       { key: 'reviewers', label: 'Reviewers', required: false, multiline: false, prompt: 'Who reviews changes for this skill?', hint: 'Optional. Comma-separated names/teams.' },
       { key: 'version', label: 'Version', required: false, multiline: false, prompt: 'Enter skill version.', hint: 'Optional. Example: 1.0.0' },
       { key: 'tags', label: 'Tags', required: false, multiline: false, prompt: 'Add searchable tags.', hint: 'Optional. Example: qe,api,regression,banking' },
-      { key: 'examples', label: 'Examples', required: false, multiline: true, prompt: 'Add usage examples.', hint: 'Optional. Leave blank to skip.' },
-      { key: 'success_metrics', label: 'Success metrics', required: false, multiline: true, prompt: 'Define measurable success metrics.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'change_log', label: 'Change log', required: false, multiline: true, prompt: 'Document version history and changes.', hint: 'Optional. Example: v1.0.0 — Initial release' },
     ],
   },
   instruction: {
@@ -115,20 +131,31 @@ const wizardDefinitions = {
       { key: 'file_name', label: 'Instruction file name', required: true, multiline: false, prompt: 'Enter the instruction file name.', hint: 'Required. .md is auto-added if omitted. Example: release-readiness-instructions' },
       { key: 'title', label: 'Instruction title', required: true, multiline: false, prompt: 'Enter a clear instruction title.', hint: 'Required. Example: QE Release Readiness Checklist' },
       { key: 'objective', label: 'Objective', required: true, multiline: true, prompt: 'Describe what this instruction should achieve.', hint: 'Required. You can type multiple lines. Press Ctrl+Enter to continue.' },
+      { key: 'domain', label: 'Domain', required: false, multiline: false, prompt: 'Which business domain does this instruction apply to?', hint: 'Optional. Example: Retail Banking, Payments, Wealth Management' },
       { key: 'audience', label: 'Audience', required: false, multiline: false, prompt: 'Who is this instruction for?', hint: 'Optional. Example: QE analysts, automation engineers.' },
       { key: 'prerequisites', label: 'Prerequisites', required: false, multiline: true, prompt: 'List prerequisites before execution.', hint: 'Optional. Leave blank to skip.' },
       { key: 'inputs', label: 'Inputs', required: false, multiline: true, prompt: 'List required inputs, artifacts, or data.', hint: 'Optional. Leave blank to skip.' },
       { key: 'steps', label: 'Steps', required: true, multiline: true, prompt: 'Enter the detailed execution steps.', hint: 'Required. Multi-line supported; keep one instruction per line if possible.' },
+      { key: 'expected_duration', label: 'Expected duration', required: false, multiline: false, prompt: 'How long should this instruction take to complete?', hint: 'Optional. Example: 30 minutes, 2 hours' },
+      { key: 'exit_criteria', label: 'Exit criteria', required: false, multiline: true, prompt: 'What conditions must be met to consider this instruction complete?', hint: 'Optional. Leave blank to skip.' },
       { key: 'validation', label: 'Validation and acceptance', required: false, multiline: true, prompt: 'Describe how success is validated.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'environment', label: 'Environment', required: false, multiline: true, prompt: 'Target environments where this instruction applies.', hint: 'Optional. Example: SIT, UAT, Pre-prod' },
+      { key: 'tooling', label: 'Tooling', required: false, multiline: true, prompt: 'Tools, scripts, or platforms required.', hint: 'Optional. Example: Jira, Jenkins, Selenium Grid' },
+      { key: 'compliance', label: 'Compliance and regulatory', required: false, multiline: true, prompt: 'Compliance constraints (SOX, PCI-DSS, audit trail, etc.).', hint: 'Optional. Leave blank to skip.' },
+      { key: 'security', label: 'Security considerations', required: false, multiline: true, prompt: 'Security requirements, access control, or data handling rules.', hint: 'Optional. Leave blank to skip.' },
       { key: 'rollback', label: 'Rollback/contingency', required: false, multiline: true, prompt: 'Add fallback actions if execution fails.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'escalation', label: 'Escalation path', required: false, multiline: true, prompt: 'Who to escalate to and when.', hint: 'Optional. Example: If blocker found -> QE Lead -> Release Manager' },
+      { key: 'communication', label: 'Communication plan', required: false, multiline: true, prompt: 'Who to notify and when during execution.', hint: 'Optional. Leave blank to skip.' },
       { key: 'references', label: 'References', required: false, multiline: true, prompt: 'Link related docs, dashboards, or runbooks.', hint: 'Optional. Leave blank to skip.' },
       { key: 'notes', label: 'Notes', required: false, multiline: true, prompt: 'Add notes, constraints, reminders, or approvals.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'risks', label: 'Risks', required: false, multiline: true, prompt: 'List key risks and mitigations.', hint: 'Optional. Leave blank to skip.' },
+      { key: 'glossary', label: 'Glossary', required: false, multiline: true, prompt: 'Define domain-specific terms or acronyms.', hint: 'Optional. Leave blank to skip.' },
       { key: 'owner', label: 'Owner', required: false, multiline: false, prompt: 'Who owns this instruction?', hint: 'Optional. Team or individual name.' },
       { key: 'approvers', label: 'Approvers', required: false, multiline: false, prompt: 'Who approves this process?', hint: 'Optional. Comma-separated names/teams.' },
       { key: 'frequency', label: 'Frequency', required: false, multiline: false, prompt: 'How often is this run?', hint: 'Optional. Example: per release / weekly.' },
       { key: 'sla', label: 'SLA/target timeline', required: false, multiline: false, prompt: 'Any timeline or SLA target?', hint: 'Optional. Example: Complete in 2 hours.' },
-      { key: 'risks', label: 'Risks', required: false, multiline: true, prompt: 'List key risks and mitigations.', hint: 'Optional. Leave blank to skip.' },
       { key: 'tags', label: 'Tags', required: false, multiline: false, prompt: 'Add searchable tags.', hint: 'Optional. Example: release,checklist,qe' },
+      { key: 'change_log', label: 'Change log', required: false, multiline: true, prompt: 'Document version history and changes.', hint: 'Optional. Example: v1.0.0 — Initial release' },
     ],
   },
 };
@@ -211,38 +238,41 @@ function getLiveWizardValues() {
 
 function buildSkillPreviewMarkdown(values) {
   const read = (key) => toBulletBlock(values[key]);
-  return [
+  const sections = [
     `# ${values.title || 'Skill title'}`,
     '',
     '## Purpose',
     read('purpose'),
-    '',
-    '## Scope',
-    read('scope'),
-    '',
-    '## Business Context',
-    read('business_context'),
-    '',
-    '## Inputs',
-    read('inputs'),
-    '',
-    '## Preconditions',
-    read('preconditions'),
-    '',
-    '## Actions',
-    read('actions'),
-    '',
-    '## Rules and Validations',
-    read('rules'),
-    '',
-    '## Outputs',
-    read('outputs'),
-    '',
-    '## Dependencies',
-    read('dependencies'),
-    '',
-    '## Limitations',
-    read('limitations'),
+  ];
+  const optional = [
+    ['Domain', 'domain'],
+    ['Scope', 'scope'],
+    ['Business Context', 'business_context'],
+    ['Inputs', 'inputs'],
+    ['Preconditions', 'preconditions'],
+    ['Actions', 'actions'],
+    ['Rules and Validations', 'rules'],
+    ['Test Types', 'test_types'],
+    ['Test Data Requirements', 'data_requirements'],
+    ['Environment', 'environment'],
+    ['Outputs', 'outputs'],
+    ['Edge Cases', 'edge_cases'],
+    ['Non-Functional Requirements', 'non_functional'],
+    ['Compliance and Regulatory', 'compliance'],
+    ['Integration Points', 'integration_points'],
+    ['Dependencies', 'dependencies'],
+    ['Limitations', 'limitations'],
+    ['Priority Classification', 'priority'],
+    ['Glossary', 'glossary'],
+    ['Examples', 'examples'],
+    ['Success Metrics', 'success_metrics'],
+  ];
+  optional.forEach(([heading, key]) => {
+    if (values[key]) {
+      sections.push('', `## ${heading}`, read(key));
+    }
+  });
+  sections.push(
     '',
     '## Ownership',
     `- Owner: ${values.owner || 'Not provided'}`,
@@ -250,49 +280,48 @@ function buildSkillPreviewMarkdown(values) {
     `- Version: ${values.version || 'Not provided'}`,
     `- Tags: ${values.tags || 'Not provided'}`,
     `- File: ${toPreviewMarkdownName(values.file_name, 'skill-file')}`,
-    '',
-    '## Examples',
-    read('examples'),
-    '',
-    '## Success Metrics',
-    read('success_metrics'),
-  ].join('\n');
+  );
+  if (values.change_log) {
+    sections.push('', '## Change Log', read('change_log'));
+  }
+  return sections.join('\n');
 }
 
 function buildInstructionPreviewMarkdown(values) {
   const read = (key) => toBulletBlock(values[key]);
-  return [
+  const sections = [
     `# ${values.title || 'Instruction title'}`,
     '',
     '## Objective',
     read('objective'),
-    '',
-    '## Audience',
-    read('audience'),
-    '',
-    '## Prerequisites',
-    read('prerequisites'),
-    '',
-    '## Inputs',
-    read('inputs'),
-    '',
-    '## Steps',
-    read('steps'),
-    '',
-    '## Validation and Acceptance',
-    read('validation'),
-    '',
-    '## Rollback/Contingency',
-    read('rollback'),
-    '',
-    '## References',
-    read('references'),
-    '',
-    '## Notes',
-    read('notes'),
-    '',
-    '## Risks',
-    read('risks'),
+  ];
+  const optional = [
+    ['Domain', 'domain'],
+    ['Audience', 'audience'],
+    ['Prerequisites', 'prerequisites'],
+    ['Inputs', 'inputs'],
+    ['Steps', 'steps'],
+    ['Expected Duration', 'expected_duration'],
+    ['Exit Criteria', 'exit_criteria'],
+    ['Validation and Acceptance', 'validation'],
+    ['Environment', 'environment'],
+    ['Tooling', 'tooling'],
+    ['Compliance and Regulatory', 'compliance'],
+    ['Security Considerations', 'security'],
+    ['Rollback/Contingency', 'rollback'],
+    ['Escalation Path', 'escalation'],
+    ['Communication Plan', 'communication'],
+    ['References', 'references'],
+    ['Notes', 'notes'],
+    ['Risks', 'risks'],
+    ['Glossary', 'glossary'],
+  ];
+  optional.forEach(([heading, key]) => {
+    if (values[key]) {
+      sections.push('', `## ${heading}`, read(key));
+    }
+  });
+  sections.push(
     '',
     '## Governance',
     `- Owner: ${values.owner || 'Not provided'}`,
@@ -301,7 +330,11 @@ function buildInstructionPreviewMarkdown(values) {
     `- SLA/Target timeline: ${values.sla || 'Not provided'}`,
     `- Tags: ${values.tags || 'Not provided'}`,
     `- File: ${toPreviewMarkdownName(values.file_name, 'instruction-file')}`,
-  ].join('\n');
+  );
+  if (values.change_log) {
+    sections.push('', '## Change Log', read('change_log'));
+  }
+  return sections.join('\n');
 }
 
 function escapeHtml(value) {
@@ -634,7 +667,11 @@ async function checkBridgeHealth() {
     if (!response.ok) {
       throw new Error(payload.error || 'Bridge health check failed.');
     }
-    setBridgeStatus(`Bridge OK on ${payload.bridge_url || 'local bridge'}`, 'ok');
+    const modelInfo = typeof payload.modelCount === 'number'
+      ? ` | models: ${payload.modelCount}`
+      : '';
+    const modeInfo = payload.mode ? ` | mode: ${payload.mode}` : '';
+    setBridgeStatus(`Bridge OK on ${payload.bridge_url || 'local bridge'}${modelInfo}${modeInfo}`, 'ok');
     if (bridgeHealthRetryTimer) {
       clearInterval(bridgeHealthRetryTimer);
       bridgeHealthRetryTimer = null;
@@ -672,6 +709,13 @@ function renderGhcpResponse(payload) {
   });
 
   previewBox.textContent = previewLines.join('\n');
+}
+
+function renderWarnings(warnings) {
+  if (!Array.isArray(warnings) || warnings.length === 0) {
+    return;
+  }
+  setBridgeStatus(`Warning: ${warnings.join(' ')}`, 'warn');
 }
 
 function formatGhcpResponseForDisplay(payload) {
@@ -765,6 +809,7 @@ async function packageAndSendCurrentSource() {
   }
 
   latestGhcpArtifact = responsePayload.artifact;
+  renderWarnings(responsePayload.warnings);
   renderGhcpResponse(responsePayload.response);
 }
 
@@ -825,6 +870,7 @@ async function previewCurrentSourceContext() {
   previewState.isApplyingPreview = false;
   previewState.fingerprint = previewFingerprint;
   autoResizeSourcePreview();
+  renderWarnings(responsePayload.warnings);
 }
 
 async function loadDocumentSheetsIfRequired() {
@@ -926,9 +972,21 @@ function closeWizard() {
   wizardOverlay.hidden = true;
   wizardState = null;
   wizardInput.value = '';
+  wizardInput.hidden = false;
+  wizardHint.hidden = false;
+  wizardSample.hidden = false;
+  wizardLabel.hidden = false;
   wizardSample.textContent = 'Sample input will appear here.';
   wizardSummary.textContent = 'No details captured yet.';
   wizardPreview.textContent = 'Preview will appear here as markdown.';
+  const editArea = document.getElementById('wizardEditArea');
+  const editLabel = document.getElementById('wizardEditLabel');
+  const saveBtn = document.getElementById('wizardSaveBtn');
+  const backBtn = document.getElementById('wizardBackBtn');
+  if (editArea) editArea.hidden = true;
+  if (editLabel) editLabel.hidden = true;
+  if (saveBtn) saveBtn.hidden = true;
+  if (backBtn) backBtn.hidden = true;
 }
 
 function renderWizardStep() {
@@ -973,7 +1031,7 @@ function persistWizardValue() {
   return true;
 }
 
-async function submitWizard() {
+function showEditablePreview() {
   if (!wizardState || !persistWizardValue()) {
     return;
   }
@@ -984,11 +1042,72 @@ async function submitWizard() {
     return;
   }
 
+  const markdown = wizardState.type === 'skill'
+    ? buildSkillPreviewMarkdown(wizardState.values)
+    : buildInstructionPreviewMarkdown(wizardState.values);
+
+  wizardState.editMode = true;
+
+  wizardTitle.textContent = `Review & Save — ${wizardState.values.title || wizardState.definition.title}`;
+  wizardStepMeta.textContent = 'Review the generated markdown below. Edit if needed, then click Save.';
+  wizardPrompt.textContent = '';
+  wizardInput.hidden = true;
+  wizardHint.hidden = true;
+  wizardSample.hidden = true;
+  wizardLabel.hidden = true;
+  wizardNextBtn.hidden = true;
+  wizardSubmitBtn.hidden = true;
+
+  const editArea = document.getElementById('wizardEditArea');
+  const editLabel = document.getElementById('wizardEditLabel');
+  const saveBtn = document.getElementById('wizardSaveBtn');
+  const backBtn = document.getElementById('wizardBackBtn');
+  editArea.value = markdown;
+  editArea.hidden = false;
+  editLabel.hidden = false;
+  saveBtn.hidden = false;
+  backBtn.hidden = false;
+  wizardSummary.textContent = 'You can edit the markdown above before saving.';
+  wizardPreview.innerHTML = toColorizedMarkdownHtml(markdown);
+
+  editArea.oninput = () => {
+    wizardPreview.innerHTML = toColorizedMarkdownHtml(editArea.value);
+  };
+}
+
+function backFromEditablePreview() {
+  if (!wizardState) return;
+  wizardState.editMode = false;
+  const editArea = document.getElementById('wizardEditArea');
+  const editLabel = document.getElementById('wizardEditLabel');
+  const saveBtn = document.getElementById('wizardSaveBtn');
+  const backBtn = document.getElementById('wizardBackBtn');
+  editArea.hidden = true;
+  editLabel.hidden = true;
+  saveBtn.hidden = true;
+  backBtn.hidden = true;
+  wizardInput.hidden = false;
+  wizardHint.hidden = false;
+  wizardSample.hidden = false;
+  wizardLabel.hidden = false;
+  renderWizardStep();
+}
+
+async function submitWizard() {
+  if (!wizardState) return;
+
+  const editArea = document.getElementById('wizardEditArea');
+  const markdownContent = editArea.value;
+  if (!markdownContent.trim()) {
+    wizardSummary.textContent = 'Cannot save empty content.';
+    return;
+  }
+
   const route = wizardState.definition.submitRoute();
   const response = await fetch(route, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(wizardState.values),
+    body: JSON.stringify({ ...wizardState.values, markdown_override: markdownContent }),
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -1007,6 +1126,7 @@ function updateActionMode() {
   testCaseFieldsEl.hidden = !isTestCaseMode;
   ghcpPanelEl.hidden = !actionTypeEl.value;
   actionNoticeEl.hidden = !isAutomationMode;
+  document.getElementById('generateWrap').hidden = !isTestCaseMode;
 
   if (!isTestCaseMode) {
     resetResults();
@@ -1234,8 +1354,67 @@ wizardNextBtn.addEventListener('click', () => {
   wizardState.index += 1;
   renderWizardStep();
 });
-wizardSubmitBtn.addEventListener('click', async () => {
+wizardSubmitBtn.addEventListener('click', () => {
+  showEditablePreview();
+});
+
+document.getElementById('wizardSaveBtn').addEventListener('click', async () => {
   await submitWizard();
+});
+
+document.getElementById('wizardBackBtn').addEventListener('click', () => {
+  backFromEditablePreview();
+});
+
+const wizardDropZone = document.getElementById('wizardDropZone');
+const wizardFileInput = document.getElementById('wizardFileInput');
+
+async function uploadWizardFile(file) {
+  if (!wizardState) return;
+  if (!file.name.toLowerCase().endsWith('.md')) {
+    wizardSummary.textContent = 'Only .md files are accepted.';
+    return;
+  }
+  const route = wizardState.type === 'skill'
+    ? (appConfig.uploadSkillRoute || '/api/skills/upload')
+    : (appConfig.uploadInstructionRoute || '/api/instructions/upload');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  wizardSummary.textContent = `Uploading ${file.name}...`;
+  try {
+    const response = await fetch(route, { method: 'POST', body: formData });
+    const payload = await response.json();
+    if (!response.ok) {
+      wizardSummary.textContent = `Error: ${payload.error || 'Upload failed.'}`;
+      return;
+    }
+    wizardSummary.textContent = `Uploaded: ${payload.file}`;
+    await loadReferenceFiles();
+    closeWizard();
+  } catch (error) {
+    wizardSummary.textContent = `Upload failed: ${error.message}`;
+  }
+}
+
+wizardDropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  wizardDropZone.classList.add('dragover');
+});
+wizardDropZone.addEventListener('dragleave', () => {
+  wizardDropZone.classList.remove('dragover');
+});
+wizardDropZone.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  wizardDropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) await uploadWizardFile(file);
+});
+wizardFileInput.addEventListener('change', async () => {
+  const file = wizardFileInput.files[0];
+  if (file) await uploadWizardFile(file);
+  wizardFileInput.value = '';
 });
 
 testCaseFieldsEl.addEventListener('submit', async (event) => {
@@ -1252,7 +1431,7 @@ wizardInput.addEventListener('keydown', async (event) => {
   if (wizardSubmitBtn.hidden) {
     wizardNextBtn.click();
   } else {
-    await submitWizard();
+    showEditablePreview();
   }
 });
 
@@ -1292,6 +1471,50 @@ document.addEventListener('click', (event) => {
 
   if (!menuPanel.contains(event.target) && event.target !== menuToggleBtn) {
     toggleMenu(false);
+  }
+});
+
+async function testConnection() {
+  testConnOverlay.hidden = false;
+  testConnIcon.className = 'test-conn-icon';
+  testConnTitle.textContent = 'Testing connection...';
+  testConnBody.textContent = 'Sending "Who are you?" to GHCP...';
+  testConnectionBtn.disabled = true;
+
+  const route = appConfig.ghcpTestConnectionRoute || '/api/ghcp/test-connection';
+  try {
+    const response = await fetch(route, { method: 'POST' });
+    const payload = await response.json();
+
+    if (response.ok && payload.status === 'ok') {
+      testConnIcon.className = 'test-conn-icon ok';
+      testConnTitle.textContent = 'Connection OK';
+      const modelLine = payload.model ? `Model: ${payload.model}\n\n` : '';
+      testConnBody.textContent = `${modelLine}${payload.response || 'No response text.'}`;
+      setBridgeStatus('Connection test passed', 'ok');
+    } else {
+      testConnIcon.className = 'test-conn-icon error';
+      testConnTitle.textContent = 'Connection Error';
+      testConnBody.textContent = payload.error || 'Unknown error from bridge.';
+      setBridgeStatus('Connection test failed', 'error');
+    }
+  } catch (error) {
+    testConnIcon.className = 'test-conn-icon error';
+    testConnTitle.textContent = 'Connection Error';
+    testConnBody.textContent = `Bridge unavailable: ${error.message}`;
+    setBridgeStatus('Connection test failed', 'error');
+  } finally {
+    testConnectionBtn.disabled = false;
+  }
+}
+
+testConnectionBtn.addEventListener('click', testConnection);
+closeTestConnBtn.addEventListener('click', () => {
+  testConnOverlay.hidden = true;
+});
+testConnOverlay.addEventListener('click', (event) => {
+  if (event.target === testConnOverlay) {
+    testConnOverlay.hidden = true;
   }
 });
 
