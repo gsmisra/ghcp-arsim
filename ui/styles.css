@@ -106,8 +106,44 @@ body {
   z-index: 30;
 }
 
+.menu-model-selector {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 2px;
+}
+
+.menu-model-selector label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.menu-model-selector select {
+  font-size: 0.88rem;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
 .menu-panel button {
   width: 100%;
+}
+
+.exit-btn {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+  margin-top: 4px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.exit-btn:hover {
+  background: #b91c1c;
 }
 
 .page-logo {

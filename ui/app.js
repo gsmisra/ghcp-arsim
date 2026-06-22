@@ -21,6 +21,7 @@ const downloadBtn = document.getElementById('downloadBtn');
 const previewBox = document.getElementById('previewBox');
 const menuToggleBtn = document.getElementById('menuToggleBtn');
 const menuPanel = document.getElementById('menuPanel');
+const modelSelect = document.getElementById('modelSelect');
 const addSkillBtn = document.getElementById('addSkillBtn');
 const addInstructionBtn = document.getElementById('addInstructionBtn');
 const devDocsBtn = document.getElementById('devDocsBtn');
@@ -56,6 +57,7 @@ const wizardNextBtn = document.getElementById('wizardNextBtn');
 const wizardSubmitBtn = document.getElementById('wizardSubmitBtn');
 const closeWizardBtn = document.getElementById('closeWizardBtn');
 const testConnectionBtn = document.getElementById('testConnectionBtn');
+const exitBtn = document.getElementById('exitBtn');
 const testConnOverlay = document.getElementById('testConnOverlay');
 const testConnIcon = document.getElementById('testConnIcon');
 const testConnTitle = document.getElementById('testConnTitle');
@@ -550,6 +552,51 @@ function renderReferenceLog(payload) {
 
   if (referenceLogEl) {
     referenceLogEl.textContent = logText;
+  }
+}
+
+async function loadAvailableModels() {
+  const route = appConfig.ghcpModelsRoute || '/api/ghcp/models';
+  try {
+    const response = await fetch(route);
+    if (!response.ok) throw new Error('Failed to fetch models');
+    const payload = await response.json();
+    const models = payload.models || [];
+    const selected = payload.selected || '';
+
+    modelSelect.innerHTML = '';
+    if (models.length === 0) {
+      modelSelect.innerHTML = '<option value="">No models available</option>';
+      return;
+    }
+    models.forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m.uid || m.id;
+      opt.textContent = m.name || m.id;
+      if (m.vendor) {
+        opt.textContent += ` (${m.vendor})`;
+      }
+      modelSelect.appendChild(opt);
+    });
+    if (selected) {
+      modelSelect.value = selected;
+    }
+  } catch {
+    modelSelect.innerHTML = '<option value="">Bridge unavailable</option>';
+  }
+}
+
+async function selectModel(modelId) {
+  const route = appConfig.ghcpModelsSelectRoute || '/api/ghcp/models/select';
+  try {
+    await fetch(route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_id: modelId }),
+    });
+    setBridgeStatus(`Model: ${modelSelect.selectedOptions[0]?.textContent || modelId}`, 'ok');
+  } catch {
+    setBridgeStatus('Failed to select model', 'error');
   }
 }
 
@@ -1307,6 +1354,9 @@ downloadBtn.addEventListener('click', () => {
 addSkillBtn.addEventListener('click', () => openWizard('skill'));
 addInstructionBtn.addEventListener('click', () => openWizard('instruction'));
 menuToggleBtn.addEventListener('click', () => toggleMenu());
+modelSelect.addEventListener('change', async () => {
+  await selectModel(modelSelect.value);
+});
 devDocsBtn.addEventListener('click', () => {
   const route = appConfig.devDocsRoute || '/dev-docs';
   window.open(route, '_blank', 'noopener');
@@ -1518,10 +1568,28 @@ testConnOverlay.addEventListener('click', (event) => {
   }
 });
 
+exitBtn.addEventListener('click', async () => {
+  if (!confirm('This will shut down the ARSIM platform, close the VS Code bridge window, and stop the server. Continue?')) {
+    return;
+  }
+  toggleMenu(false);
+  exitBtn.disabled = true;
+  exitBtn.textContent = 'Shutting down...';
+  const route = appConfig.shutdownRoute || '/api/shutdown';
+  try {
+    await fetch(route, { method: 'POST' });
+  } catch {
+    // Server may already be gone
+  }
+  document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Manrope,sans-serif;color:#1f2937;"><div style="text-align:center;"><h1>ARSIM Platform Stopped</h1><p>All services have been shut down. You can close this tab.</p></div></div>';
+  try { window.close(); } catch { /* browser may block */ }
+});
+
 updateActionMode();
 updateMode();
 loadReferenceFiles();
 loadSavedPrompts();
+loadAvailableModels();
 updateSavePromptVisibility();
 autoResizeSourcePreview();
 checkBridgeHealth();

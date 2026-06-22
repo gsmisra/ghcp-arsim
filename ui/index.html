@@ -16,10 +16,17 @@
   <div class="page-menu">
     <button id="menuToggleBtn" type="button" class="menu-toggle" aria-expanded="false" aria-controls="menuPanel">Menu</button>
     <div id="menuPanel" class="menu-panel" hidden>
+      <div class="menu-model-selector">
+        <label for="modelSelect">LLM Model</label>
+        <select id="modelSelect">
+          <option value="">Loading models...</option>
+        </select>
+      </div>
       <button id="addSkillBtn" type="button">Add new skill</button>
       <button id="addInstructionBtn" type="button">Add new Instruction</button>
       <button id="devDocsBtn" type="button" class="ghost-btn">Dev Docs</button>
       <button id="testConnectionBtn" type="button" class="ghost-btn">Test Connection</button>
+      <button id="exitBtn" type="button" class="exit-btn">Exit Platform</button>
     </div>
   </div>
   <main class="shell">

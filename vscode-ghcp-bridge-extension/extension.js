@@ -239,13 +239,25 @@ function validateBridgeResponse(payload) {
   });
 }
 
-async function generateWithLanguageModel(payload) {
-  let models = await vscode.lm.selectChatModels();
+function modelUid(m) {
+  return `${m.vendor || '_'}:${m.id || m.family || '_'}`;
+}
+
+async function resolveModel(preferredId) {
+  const models = await vscode.lm.selectChatModels();
   if (!models || models.length === 0) {
     throw new Error('No VS Code language models are available. Make sure GHCP/Copilot chat access is enabled.');
   }
+  if (preferredId) {
+    const match = models.find((m) => modelUid(m) === preferredId)
+      || models.find((m) => m.id === preferredId || m.name === preferredId);
+    if (match) return match;
+  }
+  return models[0];
+}
 
-  const [model] = models;
+async function generateWithLanguageModel(payload) {
+  const model = await resolveModel(payload.model_id);
   const promptSections = [
     'SYSTEM ROLE:\nYou are an enterprise QE assistant inside VS Code.',
     (
@@ -288,13 +300,14 @@ async function handleTestConnection(req, res, settings) {
     return;
   }
 
+  let payload = {};
   try {
-    const models = await vscode.lm.selectChatModels();
-    if (!models || models.length === 0) {
-      throw new Error('No VS Code language models are available. Make sure GHCP/Copilot chat access is enabled.');
-    }
+    const raw = await readRequestBody(req);
+    if (raw.trim()) payload = JSON.parse(raw);
+  } catch { /* empty body is fine */ }
 
-    const [model] = models;
+  try {
+    const model = await resolveModel(payload.model_id);
     const messages = [
       vscode.LanguageModelChatMessage.User('Who are you?'),
     ];
@@ -316,6 +329,43 @@ async function handleTestConnection(req, res, settings) {
       error: String(error && error.message ? error.message : error),
     });
   }
+}
+
+async function handleListModels(req, res, settings) {
+  if (!ensureAuthorized(req, settings.authToken)) {
+    writeJson(res, 401, { error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const models = await vscode.lm.selectChatModels();
+    const list = (models || []).map((m) => ({
+      uid: modelUid(m),
+      id: m.id || '',
+      name: m.name || m.id || 'unknown',
+      vendor: m.vendor || '',
+      family: m.family || '',
+    }));
+    writeJson(res, 200, { models: list });
+  } catch (error) {
+    writeJson(res, 500, {
+      error: String(error && error.message ? error.message : error),
+    });
+  }
+}
+
+async function handleCloseWindow(req, res, settings) {
+  if (!ensureAuthorized(req, settings.authToken)) {
+    writeJson(res, 401, { error: 'Unauthorized' });
+    return;
+  }
+
+  writeJson(res, 200, { status: 'closing' });
+
+  stopServer();
+  setTimeout(() => {
+    vscode.commands.executeCommand('workbench.action.closeWindow');
+  }, 500);
 }
 
 async function handleGenerate(req, res, settings) {
@@ -403,8 +453,18 @@ function createServer(context) {
       return;
     }
 
+    if (method === 'GET' && url === '/v1/models') {
+      await handleListModels(req, res, settings);
+      return;
+    }
+
     if (method === 'POST' && url === '/v1/test-connection') {
       await handleTestConnection(req, res, settings);
+      return;
+    }
+
+    if (method === 'POST' && url === '/v1/close-window') {
+      await handleCloseWindow(req, res, settings);
       return;
     }
 

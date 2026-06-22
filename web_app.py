@@ -16,6 +16,8 @@ from qe_service import QEAgenticPlatformService  # noqa: E402
 from models.requirement import GeneratedTestCase, RequirementArtifact  # noqa: E402
 from utils.io_utils import clear_directory  # noqa: E402
 from utils.logging_config import configure_logging  # noqa: E402
+from llm.model_selector import ModelSelector  # noqa: E402
+from utils.shutdown_manager import ShutdownManager  # noqa: E402
 
 app = Flask(__name__, template_folder="ui", static_folder="ui", static_url_path="")
 config = Config("app_config.properties")
@@ -28,6 +30,8 @@ INSTRUCTIONS_DIR = Path("instructions")
 GHCP_BRIDGE_BASE_URL = config.get("GHCP_BRIDGE_BASE_URL", "http://127.0.0.1:8765").rstrip("/")
 GHCP_BRIDGE_AUTH_TOKEN = config.get("GHCP_BRIDGE_AUTH_TOKEN", "")
 PROMPTS_DB_PATH = Path("arsim.db").resolve()
+model_selector = ModelSelector(GHCP_BRIDGE_BASE_URL, GHCP_BRIDGE_AUTH_TOKEN)
+shutdown_manager = ShutdownManager(GHCP_BRIDGE_BASE_URL, GHCP_BRIDGE_AUTH_TOKEN)
 
 SKILL_REQUIRED_FIELDS = ("file_name", "title", "purpose")
 INSTRUCTION_REQUIRED_FIELDS = ("file_name", "title", "objective", "steps")
@@ -97,6 +101,8 @@ def _call_ghcp_bridge(payload: dict) -> dict:
     headers = {"Content-Type": "application/json"}
     if GHCP_BRIDGE_AUTH_TOKEN:
         headers["Authorization"] = f"Bearer {GHCP_BRIDGE_AUTH_TOKEN}"
+
+    model_selector.inject_model_id(payload)
 
     response = requests.post(
         f"{GHCP_BRIDGE_BASE_URL}/v1/generate",
@@ -522,6 +528,9 @@ def index():
         "createInstructionRoute": "/api/instructions/create",
         "uploadSkillRoute": "/api/skills/upload",
         "uploadInstructionRoute": "/api/instructions/upload",
+        "ghcpModelsRoute": "/api/ghcp/models",
+        "ghcpModelsSelectRoute": "/api/ghcp/models/select",
+        "shutdownRoute": "/api/shutdown",
         "ghcpBridgeHealthRoute": "/api/ghcp/health",
         "ghcpTestConnectionRoute": "/api/ghcp/test-connection",
         "ghcpPackageRoute": "/api/ghcp/package-and-generate",
@@ -818,10 +827,11 @@ def ghcp_test_connection():
         headers["Authorization"] = f"Bearer {GHCP_BRIDGE_AUTH_TOKEN}"
 
     try:
+        test_conn_payload = model_selector.inject_model_id({})
         response = requests.post(
             f"{GHCP_BRIDGE_BASE_URL}/v1/test-connection",
             headers=headers,
-            json={},
+            json=test_conn_payload,
             timeout=60,
         )
         payload = response.json()
@@ -831,6 +841,23 @@ def ghcp_test_connection():
         return jsonify(payload)
     except requests.RequestException as error:
         return jsonify({"status": "error", "error": f"GHCP bridge unavailable: {error}", "bridge_url": GHCP_BRIDGE_BASE_URL}), 502
+
+
+@app.route("/api/ghcp/models", methods=["GET"])
+def ghcp_list_models():
+    try:
+        models = model_selector.fetch_available_models()
+        return jsonify({"models": models, "selected": model_selector.selected_model_id})
+    except requests.RequestException as error:
+        return jsonify({"error": f"GHCP bridge unavailable: {error}"}), 502
+
+
+@app.route("/api/ghcp/models/select", methods=["POST"])
+def ghcp_select_model():
+    payload = request.get_json(force=True)
+    model_id = (payload.get("model_id") or "").strip()
+    model_selector.select(model_id)
+    return jsonify({"selected": model_id})
 
 
 @app.route("/api/ghcp/health", methods=["GET"])
@@ -879,6 +906,12 @@ def download_output_file():
         clear_directory(str(TEMP_UPLOAD_DIR), keep_names=set())
 
     return response
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def shutdown():
+    results = shutdown_manager.shutdown_all()
+    return jsonify({"status": "shutting_down", "details": results})
 
 
 if __name__ == "__main__":
