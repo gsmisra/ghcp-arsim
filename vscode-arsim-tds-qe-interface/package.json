@@ -1,0 +1,108 @@
+{
+  "name": "arsim-tds-qe-ghcp-interface",
+  "displayName": "ARSIM TDS QE GHCP Interface",
+  "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: Test Case Creation, Automation Script Creation, PR Analysis, PROD Incident Analysis and Test Failure Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
+  "version": "0.1.0",
+  "publisher": "arsim-tds",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Testing",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "copilot",
+    "qe",
+    "testing",
+    "automation",
+    "llm",
+    "banking"
+  ],
+  "activationEvents": [
+    "onView:arsimTdsQe.mainView",
+    "onCommand:arsimTdsQe.open"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "arsimTdsQe",
+          "title": "ARSIM TDS QE",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "arsimTdsQe": [
+        {
+          "type": "webview",
+          "id": "arsimTdsQe.mainView",
+          "name": "GHCP Interface"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "arsimTdsQe.open",
+        "title": "Open GHCP Interface",
+        "category": "ARSIM TDS QE"
+      },
+      {
+        "command": "arsimTdsQe.refresh",
+        "title": "Refresh Skills / Instructions / Prompts",
+        "category": "ARSIM TDS QE",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "arsimTdsQe.refresh",
+          "when": "view == arsimTdsQe.mainView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ARSIM TDS QE GHCP Interface",
+      "properties": {
+        "arsimTdsQe.maxContextCharsPerFile": {
+          "type": "number",
+          "default": 12000,
+          "minimum": 500,
+          "description": "Maximum characters read from a single selected skill/instruction/prompt file when it is included in the LLM context."
+        },
+        "arsimTdsQe.maxTotalContextChars": {
+          "type": "number",
+          "default": 48000,
+          "minimum": 1000,
+          "description": "Maximum total characters of combined context (skills + instructions + prompt + user text) sent to the model in a single request."
+        },
+        "arsimTdsQe.defaultWorkflow": {
+          "type": "string",
+          "default": "test-case-creation",
+          "description": "Workflow id selected by default when the panel first opens."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run compile && node -e \"require('fs').mkdirSync('dist-vsix',{recursive:true})\" && vsce package --out ./dist-vsix/ --allow-missing-repository",
+    "lint": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
+  }
+}

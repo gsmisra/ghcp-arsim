@@ -1,0 +1,84 @@
+2026-06-22 22:43:00,273 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-22 22:43:00,273 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-22 22:43:00,488 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:00] "GET / HTTP/1.1" 200 -
+2026-06-22 22:43:00,725 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:00] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-22 22:43:00,727 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:00] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-22 22:43:00,821 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:00] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-22 22:43:00,871 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:00] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-22 22:43:01,185 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:01] "GET /api/prompts HTTP/1.1" 200 -
+2026-06-22 22:43:01,226 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:01] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-22 22:43:01,262 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:01] "GET /api/ghcp/health HTTP/1.1" 200 -
+2026-06-22 22:43:22,444 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:43:22] "POST /api/ghcp/test-connection HTTP/1.1" 200 -
+2026-06-22 22:44:14,067 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 22:44:14] "POST /api/ghcp/test-connection HTTP/1.1" 200 -
+2026-06-22 23:32:41,782 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-22 23:32:41,782 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-22 23:32:42,539 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:42] "GET / HTTP/1.1" 200 -
+2026-06-22 23:32:42,557 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:42] "GET /styles.css HTTP/1.1" 200 -
+2026-06-22 23:32:42,802 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:42] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-22 23:32:42,859 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:42] "GET /app.js HTTP/1.1" 200 -
+2026-06-22 23:32:43,176 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:43] "GET /api/prompts HTTP/1.1" 200 -
+2026-06-22 23:32:43,176 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:43] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-22 23:32:43,205 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:43] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-22 23:32:43,222 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:43] "GET /api/ghcp/models HTTP/1.1" 200 -
+2026-06-22 23:32:43,222 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:43] "GET /api/ghcp/health HTTP/1.1" 200 -
+2026-06-22 23:32:52,862 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:52] "POST /api/ghcp/models/select HTTP/1.1" 200 -
+2026-06-22 23:32:58,353 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:32:58] "POST /api/ghcp/test-connection HTTP/1.1" 200 -
+2026-06-22 23:33:16,154 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:33:16] "POST /api/ghcp/models/select HTTP/1.1" 200 -
+2026-06-22 23:33:19,385 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:33:19] "POST /api/ghcp/test-connection HTTP/1.1" 200 -
+2026-06-22 23:35:39,598 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:35:39] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-22 23:35:39,654 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:35:39] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-06-22 23:42:10,636 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:42:10] "[36mGET /dev-docs HTTP/1.1[0m" 304 -
+2026-06-22 23:49:23,278 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-22 23:49:23,278 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-22 23:49:24,254 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:24] "GET / HTTP/1.1" 200 -
+2026-06-22 23:49:24,271 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:24] "GET /styles.css HTTP/1.1" 200 -
+2026-06-22 23:49:24,505 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:24] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-22 23:49:24,582 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:24] "GET /app.js HTTP/1.1" 200 -
+2026-06-22 23:49:24,960 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:24] "GET /api/prompts HTTP/1.1" 200 -
+2026-06-22 23:49:24,964 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:24] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-22 23:49:25,005 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:25] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-22 23:49:25,030 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:25] "GET /api/ghcp/models HTTP/1.1" 200 -
+2026-06-22 23:49:25,030 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:25] "GET /api/ghcp/health HTTP/1.1" 200 -
+2026-06-22 23:49:43,123 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:49:43] "POST /api/shutdown HTTP/1.1" 200 -
+2026-06-22 23:49:44,126 | INFO | utils.shutdown_manager | Shutting down ARSIM platform...
+2026-06-22 23:50:18,375 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-06-22 23:50:18,378 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-06-22 23:50:21,610 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:21] "GET / HTTP/1.1" 200 -
+2026-06-22 23:50:21,635 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:21] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-06-22 23:50:21,874 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:21] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-06-22 23:50:21,936 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:21] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-06-22 23:50:22,257 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:22] "GET /api/prompts HTTP/1.1" 200 -
+2026-06-22 23:50:22,257 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:22] "GET /api/reference-files HTTP/1.1" 200 -
+2026-06-22 23:50:22,276 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:22] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-06-22 23:50:22,311 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:22] "GET /api/ghcp/models HTTP/1.1" 200 -
+2026-06-22 23:50:22,311 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:50:22] "GET /api/ghcp/health HTTP/1.1" 200 -
+2026-06-22 23:54:19,731 | INFO | werkzeug | 127.0.0.1 - - [22/Jun/2026 23:54:19] "POST /api/shutdown HTTP/1.1" 200 -
+2026-06-22 23:54:20,743 | INFO | utils.shutdown_manager | Shutting down ARSIM platform...
+2026-08-05 00:21:08,859 | INFO | werkzeug | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5050
+ * Running on http://192.168.68.56:5050
+2026-08-05 00:21:08,872 | INFO | werkzeug | [33mPress CTRL+C to quit[0m
+2026-08-05 00:21:34,224 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "GET / HTTP/1.1" 200 -
+2026-08-05 00:21:34,273 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "[36mGET /app.js HTTP/1.1[0m" 304 -
+2026-08-05 00:21:34,461 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "[36mGET /styles.css HTTP/1.1[0m" 304 -
+2026-08-05 00:21:34,622 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "[36mGET /td-logo.png HTTP/1.1[0m" 304 -
+2026-08-05 00:21:34,904 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "GET /api/reference-files HTTP/1.1" 200 -
+2026-08-05 00:21:34,914 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "GET /api/prompts HTTP/1.1" 200 -
+2026-08-05 00:21:34,977 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:34] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-08-05 00:21:35,104 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:35] "GET /api/ghcp/models HTTP/1.1" 200 -
+2026-08-05 00:21:35,108 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:21:35] "GET /api/ghcp/health HTTP/1.1" 200 -
+2026-08-05 00:23:57,688 | INFO | werkzeug | 127.0.0.1 - - [05/Aug/2026 00:23:57] "POST /api/shutdown HTTP/1.1" 200 -
+2026-08-05 00:23:58,704 | INFO | utils.shutdown_manager | Shutting down ARSIM platform...

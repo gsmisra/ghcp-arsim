@@ -1,0 +1,5 @@
+# Packaged VS Code extension artifacts
+*.vsix
+vscode-arsim-tds-qe-interface/node_modules/
+vscode-arsim-tds-qe-interface/dist/
+vscode-arsim-tds-qe-interface/dist-vsix/

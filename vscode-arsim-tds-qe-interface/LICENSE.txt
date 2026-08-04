@@ -1,0 +1,4 @@
+Internal Use Only
+
+This extension is proprietary internal tooling. Not licensed for external
+distribution. All rights reserved by the owning organization.
