@@ -7,6 +7,14 @@
   --td-green: #00843d;
   --td-green-hover: #00692f;
   --td-green-soft: rgba(0, 132, 61, 0.14);
+  /* A very light shade of green for chat bubbles specifically -- distinct
+     from --td-green-soft (used for hover tints) so tuning one never
+     accidentally shifts the other. */
+  --chat-bubble-bg: rgba(0, 132, 61, 0.13);
+  /* Light grey for the user's own request bubbles -- neutral, deliberately
+     distinct from the response's green so the two sides of the
+     conversation are unmistakable at a glance. */
+  --chat-request-bubble-bg: rgba(120, 120, 128, 0.16);
   /* -apple-system/BlinkMacSystemFont resolve to San Francisco on macOS/iOS
      automatically; everywhere else (Windows/Linux) this falls through to
      Segoe UI Variable / Segoe UI, Microsoft's closest equivalent in
@@ -21,6 +29,8 @@
     --td-green: #3ecb84;
     --td-green-hover: #58d89a;
     --td-green-soft: rgba(62, 203, 132, 0.18);
+    --chat-bubble-bg: rgba(62, 203, 132, 0.2);
+    --chat-request-bubble-bg: rgba(255, 255, 255, 0.12);
   }
 }
 
@@ -192,11 +202,6 @@ html, body {
   gap: 8px;
 }
 
-.response-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 
 label.field-label {
   font-size: 12px;
@@ -367,19 +372,120 @@ textarea.expanded {
   overflow-y: auto;
   overflow-x: auto;
   overscroll-behavior: contain;
-  /* Drag-resize in both directions from the bottom-right corner, on top of
-     the Expand/Collapse toggle's preset larger size -- useful once the
-     sidebar itself has been widened. */
+  /* Drag-resize in both directions from the bottom-right corner -- useful
+     once the sidebar itself has been widened, or the thread has grown long. */
   resize: both;
-}
-.response-panel.expanded {
-  max-height: 65vh;
 }
 
 .response-panel.empty::before {
   content: attr(data-placeholder);
   color: var(--vscode-descriptionForeground);
   font-family: var(--font-apple);
+}
+
+/* ---------- chat thread (merged Chat segment) ----------
+   Only ".response-panel.chat-panel" (the Chat segment's thread) gets this
+   treatment; the plain-text Test Connection result in Settings stays on
+   ".response-panel"'s original single-block pre-wrap styling. */
+.response-panel.chat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px; /* separation between one exchange and the next -- the primary "clearly distinguishable" cue */
+  background: var(--vscode-editor-background);
+  white-space: normal; /* each .chat-bubble sets its own pre-wrap */
+}
+
+/* Groups one exchange: the user's request followed by Copilot's response.
+   Gap here is deliberately smaller than .chat-panel's inter-exchange gap,
+   the same way a real chat app visually pairs a question with its answer
+   while still separating it from the next unrelated exchange. */
+.chat-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+}
+/* Request: right-aligned, like your own outgoing messages in Messenger. */
+.chat-message.outgoing {
+  align-items: flex-end;
+}
+/* Response: left-aligned, like the other party's incoming messages. */
+.chat-message.incoming {
+  align-items: flex-start;
+}
+
+.chat-timestamp {
+  font-size: 11.5px;
+  color: var(--vscode-descriptionForeground); /* theme's muted grey -- light grey in both themes */
+  padding: 0 6px;
+}
+
+.chat-bubble {
+  color: var(--vscode-foreground);
+  padding: 10px 14px;
+  max-width: 92%;
+  white-space: pre-wrap;
+  word-break: break-word; /* long tokens wrap within the bubble rather than overflowing its rounded edge -- normal chat-bubble behavior */
+}
+/* Response bubble: light green, small tail on the bottom-left (the side
+   facing away from the edge it's aligned to). */
+.chat-bubble.incoming {
+  background: var(--chat-bubble-bg);
+  border-radius: 16px 16px 16px 4px;
+}
+/* Request bubble: light grey, tail mirrored to the bottom-right. */
+.chat-bubble.outgoing {
+  background: var(--chat-request-bubble-bg);
+  border-radius: 16px 16px 4px 16px;
+}
+.chat-bubble.error {
+  background: rgba(241, 76, 76, 0.12);
+  border: 1px solid var(--vscode-errorForeground, #f14c4c);
+  color: var(--vscode-errorForeground, #f14c4c);
+  border-radius: 16px 16px 16px 4px;
+}
+/* Sits below a partial response bubble that was cut off by an error --
+   the received tokens stay visible in the bubble above; this just flags
+   that the stream didn't finish cleanly. */
+.chat-error-note {
+  font-size: 11.5px;
+  color: var(--vscode-errorForeground, #f14c4c);
+  padding: 0 14px;
+  max-width: 92%;
+}
+
+/* Typing indicator: three dots pulsing in a bubble shaped exactly like a
+   real (about-to-arrive) response bubble, so nothing shifts position when
+   it's swapped for the actual reply. */
+.typing-bubble {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 13px 16px;
+}
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--td-green);
+  opacity: 0.35;
+  animation: typingPulse 1.3s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes typingPulse {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
 }
 
 .streaming-dot {
@@ -402,6 +508,11 @@ textarea.expanded {
   border-top: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.3));
   padding-top: 6px;
   margin-top: 4px;
+}
+.chat-message .context-summary {
+  max-width: 92%; /* matches .chat-bubble so it reads as a caption on the response, not a full-width footer */
+  padding: 6px 14px 0;
+  margin-top: -2px;
 }
 
 /* ---------- attached file ---------- */

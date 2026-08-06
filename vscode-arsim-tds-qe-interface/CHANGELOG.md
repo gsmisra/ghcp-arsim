@@ -1,5 +1,104 @@
 # Changelog
 
+## 0.9.2
+
+- **Workflow moved into Settings.** The main view now shows only the Chat
+  segment -- Workflow selection lives in Settings alongside the Copilot
+  Model dropdown (both non-collapsible, since they're single controls
+  changed less often than Skills/Instructions/Prompts). The Chat compose
+  area now shows a compact "Workflow: X · Model: Y (change in Settings)"
+  status line so the active selection is still visible without opening the
+  overlay.
+- **"Select Skill" / "Select Instruction" / "Select Custom Prompt" links**
+  added beside the Browse button in the compose area. Clicking one opens
+  Settings and jumps straight to (and expands) that specific section,
+  instead of dropping the user on a generic Settings screen they'd have to
+  scroll through. Whatever gets selected -- even mid-conversation, after
+  several exchanges already happened -- is included automatically in the
+  next request: selections are read live from state at send time, so no
+  new plumbing was needed for this part.
+- **Fixed: typing in the Chat request textarea kept losing cursor focus.**
+  Root cause: every context-limit estimate (recomputed ~500ms after each
+  pause in typing) was triggering a full re-render of the entire Chat
+  segment, which destroys and recreates the DOM, including the focused
+  textarea -- so the cursor silently dropped out and the user had to
+  re-click into the box to keep typing. Fixed at the source: the context
+  meter now updates via a small targeted DOM patch instead of a full
+  re-render. As a second layer of protection, the general re-render path
+  also now explicitly saves and restores focus/cursor position around any
+  full rebuild, so this class of bug can't resurface from some other
+  trigger later.
+
+## 0.9.1
+
+- **Enter to send**: pressing Enter in the chat textarea now sends the
+  request, matching every standard chat app. Shift+Enter still inserts a
+  newline; Enter is ignored mid-IME composition so it doesn't interfere
+  with typing Japanese/Chinese/Korean via an input method. Added a small
+  "Press Enter to send · Shift+Enter for a new line" hint under the
+  textarea for discoverability.
+- **Fixed a real bug found while making this change**: the empty-chat
+  placeholder box ("Send a request below to start the conversation.") had
+  a stray `//` sitting as literal text inside the template literal that
+  built it -- not a real JS comment (template literals don't support
+  those), so it would have rendered as garbled text on the page. Removed
+  entirely, per request: an empty chat thread is now just a blank area. The
+  "No messages yet" hint already shown in the toolbar above it made any
+  in-panel placeholder text redundant anyway.
+- **Removed the Expand/Collapse link** from the Chat segment -- the thread
+  now always renders at its standard height (still drag-resizable from the
+  corner, and still independently scrollable). The segment itself remains
+  collapsed by default, as it already was.
+
+## 0.9.0
+
+- **"Your Request" and "Response" merged into one Chat segment** -- a real
+  two-party conversation thread. Requests render as light-grey bubbles on
+  the right, responses as light-green bubbles on the left, each with a
+  small timestamp caption above it; the whole exchange history scrolls
+  top-to-bottom inside the segment, with the compose bar (textarea,
+  attach, Context Limit meter, Send) pinned below it so it's never scrolled
+  out of reach.
+- **Pulsing typing indicator**: three dots animate rhythmically in place of
+  the response bubble from the moment a request is sent until its first
+  token arrives, then swap seamlessly for the live, growing response --
+  the same pattern used by Messenger, Slack, and every modern chat UI.
+- **The compose box now clears itself after Send**, and your message
+  appears in the thread immediately (optimistic UI), rather than waiting
+  on the network round trip -- both standard chat-app behavior this
+  extension didn't have before.
+- Data model change to support this: `state.responses[]` (response-only
+  entries) became `state.chatEntries[]` (one request+response *pair* per
+  exchange, looked up by requestId in every streaming message handler
+  rather than assumed to be "whichever is last" -- more correct, and ready
+  for a future where more than one exchange could be in flight).
+  Per-exchange context-summary details now render under that exchange's
+  own response bubble instead of only the most recent one.
+- **Robustness fix caught during implementation**: if a response errored
+  out *after* partial text had already streamed in, the original logic
+  would have discarded that partial text and shown only a generic error.
+  Fixed -- partial content always stays visible in its bubble, with a
+  small "Interrupted" note alongside it rather than replacing it.
+- Copy button now exports the full conversation (both sides) as
+  timestamped plain text.
+
+## 0.8.0
+
+- **Response segment restyled as Messenger-style chat bubbles.** Each
+  response is now its own visually distinct bubble (very light green
+  background, rounded corners with a small "tail" corner), separated from
+  the next by clear spacing, with the date/time (plus workflow name) shown
+  in small light-grey text just above each bubble. Required a real data
+  model change: `state.responseText` (one accumulated string with text
+  dividers) became `state.responses[]` (one entry per exchange), which is
+  also what makes each bubble independently addressable in the DOM.
+  Streaming still updates only the last bubble's text directly, not a
+  full re-render, so typing speed stays independent of thread length.
+  The Copy button now exports all bubbles as timestamped plain-text
+  blocks. The plain-text Test Connection result in Settings is
+  unaffected -- bubble styling is scoped to a `.chat-panel` modifier
+  class used only by the Response segment's thread.
+
 ## 0.7.2
 
 - **Settings sections are now collapsible, collapsed by default**: Skills,

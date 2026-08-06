@@ -1,20 +1,18 @@
 import { WorkflowDefinition, WorkflowId } from '../types';
 import { genericWorkflow } from './generic';
-import { testCaseCreationWorkflow } from './testCaseCreation';
-import { automationScriptCreationWorkflow } from './automationScriptCreation';
 import { prAnalysisWorkflow } from './prAnalysis';
 import { prodIncidentAnalysisWorkflow } from './prodIncidentAnalysis';
-import { testFailureAnalysisWorkflow } from './testFailureAnalysis';
 
 // `genericWorkflow` ("-- Select --") is listed first so it renders as the
 // dropdown's default option without any special-casing in the webview.
+// Test Case Creation, Automation Script Creation, and Test Failure
+// Analysis are currently disabled (see testCaseCreation.ts /
+// automationScriptCreation.ts / testFailureAnalysis.ts) and intentionally
+// left out of this list.
 export const WORKFLOWS: WorkflowDefinition[] = [
   genericWorkflow,
-  testCaseCreationWorkflow,
-  automationScriptCreationWorkflow,
   prAnalysisWorkflow,
   prodIncidentAnalysisWorkflow,
-  testFailureAnalysisWorkflow,
 ];
 
 const BY_ID: Record<WorkflowId, WorkflowDefinition> = WORKFLOWS.reduce(

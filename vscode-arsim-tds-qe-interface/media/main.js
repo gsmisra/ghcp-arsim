@@ -20,9 +20,14 @@
     promptFileDirty: false,
     userText: '',
     streaming: false,
-    responseText: '', // accumulates across the whole session -- new responses are appended, not replaced
-    responseCount: 0,
-    contextSummary: null,
+    // One entry per exchange -- a request/response *pair* -- rendered as a
+    // two-sided chat thread (request bubble right-aligned, response
+    // bubble left-aligned), like a real messaging app. Accumulates across
+    // the whole session (persists until the view or VS Code closes),
+    // never replaced on a new send.
+    // Shape: { id, timestamp, workflowLabel, requestText, responseText,
+    //          streaming, error, contextSummary }
+    chatEntries: [],
     settingsOpen: false,
     wizard: null, // { kind, stepIndex, data }
     testConnBusy: false,
@@ -42,9 +47,7 @@
     // "expanded" on every re-render. All segments start collapsed for a
     // clean landing view.
     collapsed: {
-      workflow: true,
-      request: true,
-      response: true,
+      chat: true,
       tokenUsage: true,
       // Settings overlay sections. Namespaced with a "settings" prefix so
       // they can never collide with a main-body card id, even though the
@@ -55,7 +58,6 @@
       settingsConnection: true,
       settingsAuthor: true,
     },
-    responseExpanded: false,
     promptEditorExpanded: false,
     historyFilters: { workflow: '', model: '', host: '', dateFrom: '', dateTo: '', search: '' },
     // ---- File attach ----
@@ -178,14 +180,40 @@
   }
 
   // ---------------- Main body ----------------
+  /**
+   * Only the Chat segment lives here now (Workflow moved into Settings).
+   *
+   * This replaces #body's innerHTML wholesale, which destroys and recreates
+   * every DOM node inside it -- including the compose textarea if it
+   * happens to be focused. Several message handlers (streamChunk's first
+   * token, streamDone, streamError, file-attach events) call this while the
+   * user could plausibly still have focus in #user-text, so focus/selection
+   * is explicitly captured before the rebuild and restored after it by id --
+   * otherwise the user's cursor silently drops out of the textarea and they
+   * have to click back in to keep typing.
+   */
   function renderBody() {
     const body = document.getElementById('body');
+    const active = document.activeElement;
+    const hadFocusId = active && body.contains(active) ? active.id : null;
+    const hadSelection = hadFocusId && typeof active.selectionStart === 'number'
+      ? [active.selectionStart, active.selectionEnd]
+      : null;
+
     body.innerHTML = `
-      ${cardHtml('workflow', 'Workflow', 0, workflowCardBodyHtml())}
-      ${cardHtml('request', 'Your Request', 0, requestCardBodyHtml())}
-      ${cardHtml('response', 'Response', state.responseCount || 0, responseCardBodyHtml())}
+      ${cardHtml('chat', 'Chat', state.chatEntries.length, chatCardBodyHtml())}
     `;
     wireBody();
+
+    if (hadFocusId) {
+      const el = document.getElementById(hadFocusId);
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+        if (hadSelection && typeof el.setSelectionRange === 'function') {
+          try { el.setSelectionRange(hadSelection[0], hadSelection[1]); } catch { /* not a text-selectable input */ }
+        }
+      }
+    }
   }
 
   function cardHtml(id, title, badgeCount, innerHtml) {
@@ -211,13 +239,30 @@
   function settingsSectionHtml(id, title, badgeCount, innerHtml) {
     const collapsedClass = state.collapsed[id] ? ' collapsed' : '';
     return `
-      <div class="settings-section${collapsedClass}">
+      <div class="settings-section${collapsedClass}" id="settings-section-${id}">
         <div class="settings-section-header" data-toggle="${id}">
           <h3>${esc(title)} ${badgeCount ? `<span class="badge">${badgeCount}</span>` : ''}</h3>
           <span class="chevron">${chevronIcon()}</span>
         </div>
         <div class="settings-section-body">${innerHtml}</div>
       </div>`;
+  }
+
+  /**
+   * Deep-links from the main Chat view into a specific, already-expanded
+   * Settings section (used by the "Select Skill / Instruction / Custom
+   * Prompt" links beside Browse). Opens Settings, force-expands the target
+   * section regardless of its prior collapsed state, then scrolls it into
+   * view once the overlay has actually rendered.
+   */
+  function openSettingsSection(sectionId) {
+    state.settingsOpen = true;
+    state.collapsed[sectionId] = false;
+    renderSettings();
+    requestAnimationFrame(() => {
+      const el = document.getElementById('settings-section-' + sectionId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   /** Shared by wireBody() and wireSettings(): flips state.collapsed[id] and
@@ -244,12 +289,38 @@
     return `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1"/></svg>`;
   }
 
+  function formatChatTimestamp(iso) {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  }
+
+  function scrollChatToBottom() {
+    const thread = document.getElementById('chat-thread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
+  }
+
+  /** Plain-text rendering of the whole conversation, e.g. for clipboard
+   *  export -- one "You: ... / Copilot: ..." block per exchange, in order. */
+  function allChatAsText() {
+    return state.chatEntries
+      .map((e) => {
+        const lines = [`[${formatChatTimestamp(e.timestamp)}] You: ${e.requestText}`];
+        if (e.error) {
+          lines.push(`Copilot: [error] ${e.error}`);
+        } else if (e.responseText) {
+          lines.push(`Copilot (${e.workflowLabel}): ${e.responseText}`);
+        }
+        return lines.join('\n');
+      })
+      .join('\n\n');
+  }
+
   /** navigator.clipboard.writeText works in VS Code webviews (Chromium) on
    *  a user gesture; the execCommand fallback covers any restricted
    *  environment where the async Clipboard API is unavailable. */
   function copyResponseToClipboard() {
-    if (!state.responseText) return;
-    const text = state.responseText;
+    if (!state.chatEntries.length) return;
+    const text = allChatAsText();
     const fallback = () => {
       const ta = document.createElement('textarea');
       ta.value = text;
@@ -259,7 +330,7 @@
       ta.select();
       try {
         document.execCommand('copy');
-        toast('info', 'Response copied to clipboard.');
+        toast('info', 'Conversation copied to clipboard.');
       } catch {
         toast('error', 'Could not copy to clipboard.');
       } finally {
@@ -282,7 +353,6 @@
       .map((w) => `<option value="${esc(w.id)}" ${w.id === state.workflowId ? 'selected' : ''}>${esc(w.label)}</option>`)
       .join('');
     const active = state.workflows.find((w) => w.id === state.workflowId);
-    const activeModel = state.models.find((m) => m.uid === state.modelUid);
 
     return `
       <div class="field">
@@ -290,8 +360,21 @@
         <select id="workflow-select">${options}</select>
         ${active ? `<span class="hint">${esc(active.description)}</span>` : ''}
       </div>
-      <div class="hint">Model: ${activeModel ? esc(activeModel.name) : 'none selected'} <button class="link-btn" id="open-settings-for-model">(change in Settings)</button></div>
     `;
+  }
+
+  /** Compact "what's currently active" status shown on the Chat view now
+   *  that Workflow and Model selection both live in Settings -- without
+   *  this, a user would have no way to see either without opening the
+   *  overlay. Reused for the compose-area status line. */
+  function workflowModelStatusHtml() {
+    const active = state.workflows.find((w) => w.id === state.workflowId);
+    const activeModel = state.models.find((m) => m.uid === state.modelUid);
+    return `
+      <div class="hint">
+        Workflow: ${active ? esc(active.label) : 'none selected'} · Model: ${activeModel ? esc(activeModel.name) : 'none selected'}
+        <button class="link-btn" id="open-settings-for-model">(change in Settings)</button>
+      </div>`;
   }
 
   function skillsBodyHtml() {
@@ -351,40 +434,99 @@
     `;
   }
 
-  function requestCardBodyHtml() {
+  /**
+   * The merged Chat segment: a scrollable two-party thread (request bubbles
+   * right-aligned/grey, response bubbles left-aligned/green, Messenger-
+   * style) on top, with the compose bar (textarea, attach, context meter,
+   * Send) pinned below it -- the thread scrolls internally, the compose
+   * bar never does, exactly like a real chat app.
+   */
+  function chatCardBodyHtml() {
+    const hasEntries = state.chatEntries.length > 0;
+    const threadClasses = 'response-panel chat-panel' + (hasEntries ? '' : ' empty-thread');
     return `
-      <div class="field">
-        <textarea id="user-text" placeholder="${esc(placeholderForWorkflow())}" style="min-height:96px;">${esc(state.userText)}</textarea>
+      <div class="field-label-row chat-toolbar">
+        <span class="hint">${hasEntries ? `${state.chatEntries.length} exchange${state.chatEntries.length === 1 ? '' : 's'} this session` : 'No messages yet'}</span>
+        <button class="icon-btn small" id="copy-response-btn" title="Copy full conversation" aria-label="Copy conversation" ${hasEntries ? '' : 'disabled'}>${copyIcon()}</button>
+      </div>
+      <div class="${threadClasses}" id="chat-thread">${chatThreadHtml()}</div>
+      <div class="field compose-field">
+        ${workflowModelStatusHtml()}
+        <textarea id="user-text" placeholder="${esc(placeholderForWorkflow())}" style="min-height:80px;">${esc(state.userText)}</textarea>
+        <div class="hint">Press Enter to send · Shift+Enter for a new line</div>
         ${attachedFileRowHtml()}
       </div>
-      ${contextMeterHtml()}
+      <div id="context-meter-container">${contextMeterHtml()}</div>
       <div class="btn-row">
-        <button class="btn block" id="send-btn" ${state.streaming ? 'disabled' : ''}>${state.streaming ? 'Sending…' : 'Send to Copilot'}${state.streaming ? '<span class="streaming-dot"></span>' : ''}</button>
+        <button class="btn block" id="send-btn" ${state.streaming ? 'disabled' : ''}>${state.streaming ? 'Sending…' : 'Send to Copilot'}</button>
       </div>
     `;
   }
 
-  function responseCardBodyHtml() {
-    const responseClasses = 'response-panel' + (state.responseText ? '' : ' empty') + (state.responseExpanded ? ' expanded' : '');
-    const summary = state.contextSummary;
-    const statusText = state.streaming
-      ? 'Streaming…'
-      : state.responseCount
-      ? `${state.responseCount} response${state.responseCount === 1 ? '' : 's'} this session`
-      : 'No response yet';
+  /** The three "jump into Settings" links shown beside Browse -- selecting
+   *  is still done in Settings (checkboxes / select), these just navigate
+   *  the user there. Whatever gets selected is picked up automatically:
+   *  onSend() and scheduleContextEstimate() both read state.selectedSkills /
+   *  state.selectedInstructions / state.selectedPromptFile live at call
+   *  time, so a selection made mid-conversation is included in the very
+   *  next request with no extra wiring needed here. */
+  function contextPickerLinksHtml() {
     return `
-      <div class="field">
-        <div class="field-label-row">
-          <span class="hint">${statusText}</span>
-          <span class="response-controls">
-            <button class="icon-btn small" id="copy-response-btn" title="Copy all response text" aria-label="Copy response" ${state.responseText ? '' : 'disabled'}>${copyIcon()}</button>
-            <button class="link-btn" id="response-expand-btn">${state.responseExpanded ? 'Collapse ↑' : 'Expand ↓'}</button>
-          </span>
-        </div>
-        <div class="${responseClasses}" data-placeholder="Copilot's responses will appear here and stay until you close VS Code.">${esc(state.responseText)}</div>
-      </div>
-      ${summary ? contextSummaryHtml(summary) : ''}
+      <button class="link-btn" id="select-skill-link">Select Skill</button>
+      <button class="link-btn" id="select-instruction-link">Select Instruction</button>
+      <button class="link-btn" id="select-prompt-link">Select Custom Prompt</button>
     `;
+  }
+
+  /** One `.chat-entry` per exchange: the user's request bubble followed by
+   *  Copilot's response bubble (or a pulsing typing indicator while none
+   *  of its text has arrived yet, or an error note if the request failed).
+   *  Streaming updates the response bubble's textContent directly (see the
+   *  'streamChunk' handler) rather than going through a full re-render, so
+   *  typing speed never depends on thread length -- this function only
+   *  runs on send, on the first chunk of a reply, and on completion/error. */
+  function chatThreadHtml() {
+    if (!state.chatEntries.length) return '';
+    return state.chatEntries.map(chatEntryHtml).join('');
+  }
+
+  function chatEntryHtml(entry) {
+    const requestBlock = `
+      <div class="chat-message outgoing">
+        <div class="chat-timestamp">${esc(formatChatTimestamp(entry.timestamp))}</div>
+        <div class="chat-bubble outgoing">${esc(entry.requestText)}</div>
+      </div>`;
+
+    let responseBlock;
+    if (entry.error && !entry.responseText) {
+      // Failed before any content arrived: nothing to preserve, show the error alone.
+      responseBlock = `
+        <div class="chat-message incoming">
+          <div class="chat-timestamp">${esc(entry.workflowLabel)}</div>
+          <div class="chat-bubble incoming error">⚠ ${esc(entry.error)}</div>
+        </div>`;
+    } else if (!entry.responseText) {
+      responseBlock = `
+        <div class="chat-message incoming">
+          <div class="chat-bubble incoming typing-bubble" role="status" aria-label="Copilot is responding">
+            <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+          </div>
+        </div>`;
+    } else {
+      // Has content, whether or not it also errored partway through -- a
+      // stream that dies mid-response should never make the tokens already
+      // received disappear. If it did fail, say so *alongside* the partial
+      // text rather than instead of it.
+      responseBlock = `
+        <div class="chat-message incoming">
+          <div class="chat-timestamp">${esc(formatChatTimestamp(entry.timestamp))} · ${esc(entry.workflowLabel)}</div>
+          <div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${esc(entry.responseText)}</div>
+          ${entry.error ? `<div class="chat-error-note">⚠ Interrupted: ${esc(entry.error)}</div>` : ''}
+          ${entry.contextSummary ? contextSummaryHtml(entry.contextSummary) : ''}
+        </div>`;
+    }
+
+    return `<div class="chat-entry">${requestBlock}${responseBlock}</div>`;
   }
 
   function attachedFileRowHtml() {
@@ -397,7 +539,7 @@
     }
 
     if (!state.attachedFile) {
-      return `<div class="btn-row"><button class="btn secondary" id="browse-btn">Browse…</button></div>`;
+      return `<div class="btn-row"><button class="btn secondary" id="browse-btn">Browse…</button>${contextPickerLinksHtml()}</div>`;
     }
 
     const { meta, preview } = state.attachedFile;
@@ -412,6 +554,7 @@
       </div>
       <div class="btn-row">
         <button class="btn secondary" id="browse-btn">Replace File…</button>
+        ${contextPickerLinksHtml()}
         <button class="link-btn" id="control-context-link">Control the data sent in the context</button>
         <button class="link-btn" id="remove-attached-file-btn">Remove</button>
       </div>`;
@@ -486,30 +629,19 @@
   function wireBody() {
     wireToggles(document.getElementById('body'), renderBody);
 
-    const responseExpandBtn = document.getElementById('response-expand-btn');
-    if (responseExpandBtn) {
-      responseExpandBtn.addEventListener('click', () => {
-        state.responseExpanded = !state.responseExpanded;
-        renderBody();
-      });
-    }
-
-    const workflowSelect = document.getElementById('workflow-select');
-    if (workflowSelect) {
-      workflowSelect.addEventListener('change', (e) => {
-        state.workflowId = e.target.value;
-        renderBody();
-        scheduleContextEstimate();
-      });
-    }
-
     const openSettingsForModel = document.getElementById('open-settings-for-model');
     if (openSettingsForModel) {
-      openSettingsForModel.addEventListener('click', () => {
-        state.settingsOpen = true;
-        renderSettings();
-      });
+      openSettingsForModel.addEventListener('click', () => openSettingsSection('settingsWorkflowModel'));
     }
+
+    const selectSkillLink = document.getElementById('select-skill-link');
+    if (selectSkillLink) selectSkillLink.addEventListener('click', () => openSettingsSection('settingsSkills'));
+
+    const selectInstructionLink = document.getElementById('select-instruction-link');
+    if (selectInstructionLink) selectInstructionLink.addEventListener('click', () => openSettingsSection('settingsInstructions'));
+
+    const selectPromptLink = document.getElementById('select-prompt-link');
+    if (selectPromptLink) selectPromptLink.addEventListener('click', () => openSettingsSection('settingsPrompts'));
 
     const copyResponseBtn = document.getElementById('copy-response-btn');
     if (copyResponseBtn) {
@@ -521,6 +653,16 @@
       userText.addEventListener('input', (e) => {
         state.userText = e.target.value;
         scheduleContextEstimate();
+      });
+      // Enter sends (standard chat-app behavior); Shift+Enter still inserts
+      // a newline. isComposing is checked so this doesn't fire mid-IME
+      // composition (e.g. typing Japanese/Chinese/Korean via an input
+      // method), where Enter is used to confirm a character, not submit.
+      userText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          onSend();
+        }
       });
     }
 
@@ -544,17 +686,41 @@
       });
     }
 
-    // Both links can be present at once (the attached-file row's link, and
-    // the exceeded-context warning's link) -- wire each independently.
-    ['control-context-link', 'control-context-link-warning'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('click', openControlPanel);
-    });
+    wireControlContextLinks(document.getElementById('body'));
 
     const sendBtn = document.getElementById('send-btn');
     if (sendBtn) {
       sendBtn.addEventListener('click', onSend);
     }
+  }
+
+  /** Wires the "Control the data sent in the context" link(s) within the
+   *  given scope. Both can be present at once (the attached-file row's
+   *  link, and the exceeded-context warning's link inside the context
+   *  meter) -- wire each independently. Factored out of wireBody() so
+   *  updateContextMeterDom()'s targeted re-render (see the 'contextMeter'
+   *  message handler) can re-wire just the warning link without needing a
+   *  full renderBody(). */
+  function wireControlContextLinks(scope) {
+    ['control-context-link', 'control-context-link-warning'].forEach((id) => {
+      const el = scope.querySelector('#' + id);
+      if (el) el.addEventListener('click', openControlPanel);
+    });
+  }
+
+  /** Targeted update for the context meter: swaps only the meter's own DOM
+   *  subtree instead of going through renderBody(). This message arrives
+   *  ~500ms after every pause in typing (see scheduleContextEstimate's
+   *  debounce), so routing it through a full body re-render would rebuild
+   *  the compose textarea out from under the user on every such pause --
+   *  destroying and recreating a focused element drops both its focus and
+   *  its cursor position. Updating just this container sidesteps the
+   *  problem entirely rather than papering over it with a focus-restore. */
+  function updateContextMeterDom() {
+    const container = document.getElementById('context-meter-container');
+    if (!container) return;
+    container.innerHTML = contextMeterHtml();
+    wireControlContextLinks(container);
   }
 
   function scheduleContextEstimate() {
@@ -576,7 +742,8 @@
 
   function onSend() {
     if (state.streaming) return;
-    if (!state.userText.trim()) {
+    const requestText = state.userText.trim();
+    if (!requestText) {
       toast('warn', 'Enter a request before sending.');
       return;
     }
@@ -584,24 +751,39 @@
       toast('warn', 'Select a Copilot model first.');
       return;
     }
+
+    const requestId = uid();
+    const wf = state.workflows.find((w) => w.id === state.workflowId);
+
     state.streaming = true;
-    state.collapsed.response = false; // reveal the response card so the user can watch it stream
-    // responseText is intentionally NOT cleared here -- responses accumulate
-    // for the whole session (see the 'streamStart' handler, which appends a
-    // divider before this response's text starts arriving).
-    state.contextSummary = null;
+    state.collapsed.chat = false; // reveal the chat thread so the user can watch it happen
+    state.requestId = requestId;
     state.lastUsage = null;
     state.pendingPromptTokens = null;
-    state.requestId = uid();
+    // Optimistic UI: the request bubble (and the typing indicator that
+    // stands in for the response) appears immediately, the same way a real
+    // chat app never waits on the network before showing your own message.
+    state.chatEntries.push({
+      id: requestId,
+      timestamp: new Date().toISOString(),
+      workflowLabel: wf ? wf.label : 'Request',
+      requestText,
+      responseText: '',
+      streaming: true,
+      error: null,
+      contextSummary: null,
+    });
+    state.userText = ''; // clear the compose box, like any chat app does on send
     renderBody();
     renderTokenFooter();
+    scrollChatToBottom();
 
     post({
       type: 'sendPrompt',
-      requestId: state.requestId,
+      requestId,
       workflowId: state.workflowId,
       modelUid: state.modelUid,
-      userText: state.userText,
+      userText: requestText,
       selectedSkills: state.skills.filter((s) => state.selectedSkills.has(s.relativePath)),
       selectedInstructions: state.instructions.filter((i) => state.selectedInstructions.has(i.relativePath)),
       selectedPromptFile: state.selectedPromptFile,
@@ -628,11 +810,17 @@
         <button class="icon-btn" id="settings-close" aria-label="Close">${closeIcon()}</button>
       </div>
       <div class="overlay-body">
-        <div class="settings-section">
-          <h3>Copilot Model</h3>
-          <div class="field">
-            <label class="field-label">Model used for sending requests and Test Connection</label>
-            <select id="settings-model-select">${modelOptions}</select>
+        <div id="settings-section-settingsWorkflowModel">
+          <div class="settings-section">
+            <h3>Workflow</h3>
+            ${workflowCardBodyHtml()}
+          </div>
+          <div class="settings-section">
+            <h3>Copilot Model</h3>
+            <div class="field">
+              <label class="field-label">Model used for sending requests and Test Connection</label>
+              <select id="settings-model-select">${modelOptions}</select>
+            </div>
           </div>
         </div>
         ${settingsSectionHtml('settingsSkills', 'Skills', state.selectedSkills.size, skillsBodyHtml())}
@@ -676,6 +864,16 @@
     });
 
     wireToggles(overlay, renderSettings);
+
+    const workflowSelect = document.getElementById('workflow-select');
+    if (workflowSelect) {
+      workflowSelect.addEventListener('change', (e) => {
+        state.workflowId = e.target.value;
+        renderSettings();
+        renderBody(); // refreshes the Workflow/Model status line + placeholder text on the Chat view
+        scheduleContextEstimate();
+      });
+    }
 
     document.getElementById('settings-model-select').addEventListener('change', (e) => {
       state.modelUid = e.target.value;
@@ -1326,20 +1524,13 @@
         }
         break;
 
-      case 'streamStart': {
+      case 'streamStart':
+        // The request bubble + typing indicator already appeared
+        // optimistically in onSend() the instant the user hit Send --
+        // nothing to do here but confirm the streaming flag, since actual
+        // model output only starts arriving via 'streamChunk' below.
         state.streaming = true;
-        // Append, never replace: responses accumulate for the whole
-        // session until VS Code (or this view) is closed. A divider marks
-        // where each new exchange starts in the combined scrollback.
-        const wf = state.workflows.find((w) => w.id === state.workflowId);
-        const label = wf ? wf.label : 'Request';
-        const stamp = new Date().toLocaleString();
-        const divider = `${state.responseText ? '\n\n' : ''}───── ${stamp} · ${label} ─────\n\n`;
-        state.responseText += divider;
-        state.responseCount += 1;
-        renderBody();
         break;
-      }
 
       case 'promptTokenCounted':
         if (msg.requestId === state.requestId) {
@@ -1348,39 +1539,57 @@
         }
         break;
 
-      case 'streamChunk':
-        if (msg.requestId === state.requestId) {
-          state.responseText += msg.text;
-          const panel = document.querySelector('.response-panel');
-          if (panel) {
-            panel.textContent = state.responseText;
-            panel.classList.remove('empty');
-            panel.scrollTop = panel.scrollHeight;
-          }
+      case 'streamChunk': {
+        const entry = state.chatEntries.find((e) => e.id === msg.requestId);
+        if (!entry) break;
+        const wasWaitingForFirstToken = entry.responseText.length === 0;
+        entry.responseText += msg.text;
+        if (wasWaitingForFirstToken) {
+          // Structural change (typing-dots -> an actual bubble element):
+          // needs one real re-render. Every chunk after this one is a
+          // plain textContent update below, so per-token cost stays flat
+          // regardless of how long the thread has grown.
+          renderBody();
+        } else {
+          const bubble = document.getElementById('response-bubble-' + entry.id);
+          if (bubble) bubble.textContent = entry.responseText;
         }
+        scrollChatToBottom();
         break;
+      }
 
-      case 'streamDone':
+      case 'streamDone': {
+        const entry = state.chatEntries.find((e) => e.id === msg.requestId);
+        if (entry) {
+          entry.streaming = false;
+          entry.contextSummary = msg.contextSummary;
+        }
         if (msg.requestId === state.requestId) {
           state.streaming = false;
-          state.contextSummary = msg.contextSummary;
           state.lastUsage = msg.usage;
           state.pendingPromptTokens = null;
           state.tokenSession = msg.session;
-          renderBody();
-          renderTokenFooter();
         }
+        renderBody();
+        renderTokenFooter();
         break;
+      }
 
-      case 'streamError':
+      case 'streamError': {
+        const entry = state.chatEntries.find((e) => e.id === msg.requestId);
+        if (entry) {
+          entry.streaming = false;
+          entry.error = msg.message;
+        }
         if (msg.requestId === state.requestId) {
           state.streaming = false;
           state.pendingPromptTokens = null;
-          toast('error', msg.message);
-          renderBody();
-          renderTokenFooter();
         }
+        toast('error', msg.message);
+        renderBody();
+        renderTokenFooter();
         break;
+      }
 
       case 'testConnectionResult':
         state.testConnBusy = false;
@@ -1446,7 +1655,8 @@
 
       case 'contextMeter':
         state.contextMeter = { usedTokens: msg.usedTokens, maxTokens: msg.maxTokens, exceeded: msg.exceeded, lastLineIncluded: msg.lastLineIncluded };
-        renderBody();
+        // Targeted DOM update, not renderBody() -- see updateContextMeterDom().
+        updateContextMeterDom();
         break;
 
       case 'toast':

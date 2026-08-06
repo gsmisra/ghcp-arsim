@@ -8,7 +8,7 @@ so requests are as fast as Copilot Chat itself.
 
 ## Features
 
-The main view is deliberately minimal -- four collapsible segments (all
+The main view is deliberately minimal -- three collapsible segments (all
 collapsed by default):
 
 - **Workflow** -- the "Workflow to perform" dropdown, defaulting to
@@ -24,12 +24,18 @@ collapsed by default):
 
   This segment also shows a read-only hint naming the currently selected
   Copilot model, with a link into Settings to change it.
-- **Your Request** -- the prompt textarea, Browse/attach, and the Context
-  Limit meter.
-- **Response** -- accumulates every response for the session (new replies
-  are appended after a timestamped divider, not replacing the previous
-  one) until the view or VS Code closes. Has its own Expand/Collapse toggle,
-  drag-resize, vertical/horizontal scroll, and a copy-to-clipboard button.
+- **Chat** -- a real two-party conversation thread, Messenger-style: your
+  requests appear as light-grey bubbles on the right, Copilot's responses
+  as light-green bubbles on the left, each with a small timestamp caption
+  above it. A pulsing three-dot typing indicator stands in for a response
+  until its first token arrives, then swaps for the live bubble in place.
+  The scrollable thread (top to bottom, oldest first) sits above a pinned
+  compose bar -- the prompt textarea, Browse/attach, and the Context Limit
+  meter -- so the input is always reachable no matter how long the
+  conversation gets. History accumulates for the whole session (until the
+  view or VS Code closes); the segment has its own Expand/Collapse toggle,
+  drag-resize, vertical/horizontal scroll, and a copy-to-clipboard button
+  that exports the full conversation as plain text.
 - **Token Usage** -- the sticky footer described below.
 
 Everything else lives in **Settings** (gear icon, top right):
@@ -64,7 +70,7 @@ survives crashes or a forced window close, not just clean exits.
 
 ## Attaching a file to a request
 
-Click **Browse…** under Your Request to pick a `.docx`, `.pdf`, `.csv`,
+Click **Browse…** under the Chat segment's compose bar to pick a `.docx`, `.pdf`, `.csv`,
 `.xlsx`/`.xls`, or plain text file via VS Code's native file picker
 (`src/fileIngest/`). The file is parsed once in the extension host and its
 content is included alongside your prompt. Files up to
