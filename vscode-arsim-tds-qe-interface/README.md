@@ -8,38 +8,54 @@ so requests are as fast as Copilot Chat itself.
 
 ## Features
 
-- **Home view** (activity bar icon) titled **"ARSIM TDS QE GHCP Interface"**.
-- **Workflow to perform** dropdown, defaulting to **"-- Select --"**
-  (`src/workflows/generic.ts`) -- a general-purpose mode with no fixed
-  output contract, so Skills/Instructions/a Custom Prompt can be used on
-  their own for ad hoc requests -- plus five task-specific workflows, each
-  implemented as its own module under `src/workflows/`:
+The main view is deliberately minimal -- four collapsible segments (all
+collapsed by default):
+
+- **Workflow** -- the "Workflow to perform" dropdown, defaulting to
+  **"-- Select --"** (`src/workflows/generic.ts`) -- a general-purpose mode
+  with no fixed output contract, so Skills/Instructions/a Custom Prompt can
+  be used on their own for ad hoc requests -- plus five task-specific
+  workflows, each implemented as its own module under `src/workflows/`:
   - Test Case Creation (`testCaseCreation.ts`)
   - Automation Script Creation (`automationScriptCreation.ts`)
   - PR Analysis (`prAnalysis.ts`)
   - PROD Incident Analysis (`prodIncidentAnalysis.ts`)
   - Test Failure Analysis (`testFailureAnalysis.ts`)
-- **Model picker** populated live from `vscode.lm.selectChatModels()` --
-  whatever Copilot models are enabled for your account/org show up here.
+
+  This segment also shows a read-only hint naming the currently selected
+  Copilot model, with a link into Settings to change it.
+- **Your Request** -- the prompt textarea, Browse/attach, and the Context
+  Limit meter.
+- **Response** -- accumulates every response for the session (new replies
+  are appended after a timestamped divider, not replacing the previous
+  one) until the view or VS Code closes. Has its own Expand/Collapse toggle,
+  drag-resize, vertical/horizontal scroll, and a copy-to-clipboard button.
+- **Token Usage** -- the sticky footer described below.
+
+Everything else lives in **Settings** (gear icon, top right):
+
+- **Copilot Model** -- one canonical model picker (populated live from
+  `vscode.lm.selectChatModels()`) shared by both Send and Test Connection,
+  so they can't drift out of sync.
 - **Skills** and **Instructions** checklists, auto-discovered from
   `.github/skills/*.md` and `.github/instructions/*.instructions.md` in the
   open workspace. Only the files you tick are read and sent as context.
 - **Custom Prompts**: pick a file from `.github/prompts/*.prompt.md`, view
   and edit its content inline, and save back to the same file or a new one.
-- **Settings** panel (gear icon, top right):
-  - **Test Connection** -- sends `Who are you ?` to the selected model and
-    shows the raw response.
-  - **Add New Skill / Add New Instruction / Add New Prompt** -- step-by-step
-    ("Next ->") wizards that walk through every section of a comprehensive
-    skill / instruction / prompt file and save it to the right `.github/`
-    subfolder.
+- **Connection** -- **Test Connection** sends `Who are you ?` to the
+  selected model and shows the raw response.
+- **Author Content** -- **Add New Skill / Add New Instruction / Add New
+  Prompt** step-by-step ("Next ->") wizards that walk through every section
+  of a comprehensive skill / instruction / prompt file and save it to the
+  right `.github/` subfolder.
 
 ## Token usage tracking
 
 Every request's prompt/completion token counts (from the selected model's
 own tokenizer, via `LanguageModelChat.countTokens`) are shown live in a
-sticky footer panel, alongside a running session total. A **"Token Usage
-History"** link opens the full, durable log -- one entry per request, with
+sticky, collapsible footer panel (collapsed by default), alongside a
+running session total. A **"Token Usage History"** link opens the full,
+durable log -- one entry per request, with
 timestamp, workflow, model, sent/received/total tokens, and the local
 hostname -- persisted to a JSON file under the extension's global storage
 directory (`src/telemetry/tokenHistoryStore.ts`). Entries are flushed to

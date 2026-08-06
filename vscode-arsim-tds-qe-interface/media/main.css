@@ -84,6 +84,21 @@ html, body {
 .icon-btn:hover {
   background: var(--td-green-soft);
 }
+.icon-btn.small {
+  width: 22px;
+  height: 22px;
+}
+.icon-btn.small svg {
+  width: 13px;
+  height: 13px;
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.icon-btn:disabled:hover {
+  background: transparent;
+}
 .icon-btn svg {
   width: 17px;
   height: 17px;
@@ -162,6 +177,12 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.response-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 label.field-label {
@@ -564,6 +585,8 @@ textarea.expanded {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
 }
 
 .token-footer-title {
@@ -575,6 +598,23 @@ textarea.expanded {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.token-footer .chevron {
+  color: var(--td-green);
+  transition: transform 0.15s ease;
+}
+.token-footer.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+.token-footer.collapsed .token-footer-body {
+  display: none;
+}
+.token-footer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 5px;
 }
 
 .link-btn {

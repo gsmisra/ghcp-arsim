@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0
+
+- **Main UI simplified to four segments**: Workflow, Your Request, Response,
+  and Token Usage. **Skills, Instructions, Custom Prompts, and the Copilot
+  Model selector moved into Settings**, unified into one canonical model
+  selector shared by both Send and Test Connection (previously two separate
+  dropdowns could drift out of sync). The Workflow segment now shows a
+  read-only "Model: X (change in Settings)" hint so the active model is
+  never hidden.
+- **Token Usage** is now collapsible/expandable like every other segment,
+  collapsed by default.
+- **Response segment now accumulates across the whole session** instead of
+  being replaced on each send -- every new response is appended after a
+  timestamped divider, and stays until the view or VS Code is closed. The
+  segment badge now shows the response count; vertical scroll (already
+  present) keeps a long scrollback navigable.
+- Added a **copy button** on the Response segment that copies the entire
+  accumulated response text to the clipboard, with an `execCommand`
+  fallback if the async Clipboard API is unavailable.
+
 ## 0.6.0
 
 - **Context budget now scales dynamically with the selected model, recomputed before every request.** Previously the attached-file/total character budgets were fixed config values regardless of which model was selected. Now the effective budget is derived from the selected model's real `maxInputTokens` (with a safety margin), so a bigger-context-window model genuinely lets more of an attached document through by design -- not just up to a fixed ceiling. `arsimTdsQe.maxAttachedFileContextChars` / `arsimTdsQe.maxTotalContextChars` remain as hard ceilings/fallbacks for very-large-window or window-size-unknown models.

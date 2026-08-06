@@ -20,7 +20,8 @@
     promptFileDirty: false,
     userText: '',
     streaming: false,
-    responseText: '',
+    responseText: '', // accumulates across the whole session -- new responses are appended, not replaced
+    responseCount: 0,
     contextSummary: null,
     settingsOpen: false,
     wizard: null, // { kind, stepIndex, data }
@@ -40,7 +41,7 @@
     // open/closed state has to live here, or it gets silently reset to
     // "expanded" on every re-render. All segments start collapsed for a
     // clean landing view.
-    collapsed: { workflow: true, skills: true, instructions: true, prompts: true, request: true, response: true },
+    collapsed: { workflow: true, request: true, response: true, tokenUsage: true },
     responseExpanded: false,
     promptEditorExpanded: false,
     historyFilters: { workflow: '', model: '', host: '', dateFrom: '', dateTo: '', search: '' },
@@ -128,21 +129,30 @@
     const s = state.tokenSession;
     const sessionLine = `<span class="tok-up">↑ ${fmtTok(s.promptTokens)}</span> · <span class="tok-down">↓ ${fmtTok(s.completionTokens)}</span> · <span class="tok-total">Σ ${fmtTok(s.totalTokens)}</span>`;
 
+    const collapsedClass = state.collapsed.tokenUsage ? ' collapsed' : '';
+    el.className = 'token-footer' + collapsedClass;
     el.innerHTML = `
-      <div class="token-footer-row">
+      <div class="token-footer-row" data-toggle="tokenUsage" id="token-footer-toggle">
         <span class="token-footer-title">${tokenIcon()} Token Usage</span>
-        <span class="token-footer-links">
+        <span class="chevron">${chevronIcon()}</span>
+      </div>
+      <div class="token-footer-body">
+        <div class="token-footer-links">
           <button class="link-btn" id="token-history-btn">Token Usage History</button>
           <span class="token-footer-sep">·</span>
           <button class="link-btn" id="token-reset-btn" title="Reset cumulative session totals">Reset session</button>
-        </span>
-      </div>
-      <div class="token-stats">
-        <div class="token-stat"><span class="token-label">Last request</span><span class="token-value">${lastLine}</span></div>
-        <div class="token-stat"><span class="token-label">Session (${s.requestCount} request${s.requestCount === 1 ? '' : 's'})</span><span class="token-value">${sessionLine}</span></div>
+        </div>
+        <div class="token-stats">
+          <div class="token-stat"><span class="token-label">Last request</span><span class="token-value">${lastLine}</span></div>
+          <div class="token-stat"><span class="token-label">Session (${s.requestCount} request${s.requestCount === 1 ? '' : 's'})</span><span class="token-value">${sessionLine}</span></div>
+        </div>
       </div>
     `;
 
+    document.getElementById('token-footer-toggle').addEventListener('click', () => {
+      state.collapsed.tokenUsage = !state.collapsed.tokenUsage;
+      renderTokenFooter();
+    });
     document.getElementById('token-reset-btn').addEventListener('click', () => {
       post({ type: 'resetTokenSession' });
     });
@@ -161,12 +171,9 @@
   function renderBody() {
     const body = document.getElementById('body');
     body.innerHTML = `
-      ${cardHtml('workflow', 'Workflow & Model', 0, workflowCardBodyHtml())}
-      ${cardHtml('skills', 'Skills', state.selectedSkills.size, skillsBodyHtml())}
-      ${cardHtml('instructions', 'Instructions', state.selectedInstructions.size, instructionsBodyHtml())}
-      ${cardHtml('prompts', 'Custom Prompts', state.selectedPromptFile ? 1 : 0, promptsBodyHtml())}
+      ${cardHtml('workflow', 'Workflow', 0, workflowCardBodyHtml())}
       ${cardHtml('request', 'Your Request', 0, requestCardBodyHtml())}
-      ${cardHtml('response', 'Response', state.responseText ? 1 : 0, responseCardBodyHtml())}
+      ${cardHtml('response', 'Response', state.responseCount || 0, responseCardBodyHtml())}
     `;
     wireBody();
   }
@@ -187,14 +194,49 @@
     return `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg>`;
   }
 
+  function copyIcon() {
+    return `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="5.5" width="8" height="8" rx="1.2"/><path d="M3.5 10.5h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1"/></svg>`;
+  }
+
+  /** navigator.clipboard.writeText works in VS Code webviews (Chromium) on
+   *  a user gesture; the execCommand fallback covers any restricted
+   *  environment where the async Clipboard API is unavailable. */
+  function copyResponseToClipboard() {
+    if (!state.responseText) return;
+    const text = state.responseText;
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        toast('info', 'Response copied to clipboard.');
+      } catch {
+        toast('error', 'Could not copy to clipboard.');
+      } finally {
+        ta.remove();
+      }
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => toast('info', 'Response copied to clipboard.'),
+        fallback
+      );
+    } else {
+      fallback();
+    }
+  }
+
   function workflowCardBodyHtml() {
     const options = state.workflows
       .map((w) => `<option value="${esc(w.id)}" ${w.id === state.workflowId ? 'selected' : ''}>${esc(w.label)}</option>`)
       .join('');
     const active = state.workflows.find((w) => w.id === state.workflowId);
-    const modelOptions = state.models.length
-      ? state.models.map((m) => `<option value="${esc(m.uid)}" ${m.uid === state.modelUid ? 'selected' : ''}>${esc(m.name)}${m.vendor ? ' (' + esc(m.vendor) + ')' : ''}</option>`).join('')
-      : `<option value="">No models found</option>`;
+    const activeModel = state.models.find((m) => m.uid === state.modelUid);
 
     return `
       <div class="field">
@@ -202,10 +244,7 @@
         <select id="workflow-select">${options}</select>
         ${active ? `<span class="hint">${esc(active.description)}</span>` : ''}
       </div>
-      <div class="field">
-        <label class="field-label">Copilot Model</label>
-        <select id="model-select">${modelOptions}</select>
-      </div>
+      <div class="hint">Model: ${activeModel ? esc(activeModel.name) : 'none selected'} <button class="link-btn" id="open-settings-for-model">(change in Settings)</button></div>
     `;
   }
 
@@ -282,13 +321,21 @@
   function responseCardBodyHtml() {
     const responseClasses = 'response-panel' + (state.responseText ? '' : ' empty') + (state.responseExpanded ? ' expanded' : '');
     const summary = state.contextSummary;
+    const statusText = state.streaming
+      ? 'Streaming…'
+      : state.responseCount
+      ? `${state.responseCount} response${state.responseCount === 1 ? '' : 's'} this session`
+      : 'No response yet';
     return `
       <div class="field">
         <div class="field-label-row">
-          <span class="hint">${state.streaming ? 'Streaming…' : state.responseText ? 'Latest response' : 'No response yet'}</span>
-          <button class="link-btn" id="response-expand-btn">${state.responseExpanded ? 'Collapse ↑' : 'Expand ↓'}</button>
+          <span class="hint">${statusText}</span>
+          <span class="response-controls">
+            <button class="icon-btn small" id="copy-response-btn" title="Copy all response text" aria-label="Copy response" ${state.responseText ? '' : 'disabled'}>${copyIcon()}</button>
+            <button class="link-btn" id="response-expand-btn">${state.responseExpanded ? 'Collapse ↑' : 'Expand ↓'}</button>
+          </span>
         </div>
-        <div class="${responseClasses}" data-placeholder="Copilot's response will appear here.">${esc(state.responseText)}</div>
+        <div class="${responseClasses}" data-placeholder="Copilot's responses will appear here and stay until you close VS Code.">${esc(state.responseText)}</div>
       </div>
       ${summary ? contextSummaryHtml(summary) : ''}
     `;
@@ -416,89 +463,17 @@
       });
     }
 
-    const modelSelect = document.getElementById('model-select');
-    if (modelSelect) {
-      modelSelect.addEventListener('change', (e) => {
-        state.modelUid = e.target.value;
-        scheduleContextEstimate();
+    const openSettingsForModel = document.getElementById('open-settings-for-model');
+    if (openSettingsForModel) {
+      openSettingsForModel.addEventListener('click', () => {
+        state.settingsOpen = true;
+        renderSettings();
       });
     }
 
-    document.querySelectorAll('input[type=checkbox][data-kind]').forEach((el) => {
-      el.addEventListener('change', (e) => {
-        const path = e.target.getAttribute('data-path');
-        const kind = e.target.getAttribute('data-kind');
-        const set = kind === 'skill' ? state.selectedSkills : state.selectedInstructions;
-        if (e.target.checked) set.add(path);
-        else set.delete(path);
-        renderBody();
-        scheduleContextEstimate();
-      });
-    });
-
-    const promptSelect = document.getElementById('prompt-select');
-    if (promptSelect) {
-      promptSelect.addEventListener('change', (e) => {
-        const path = e.target.value;
-        if (!path) {
-          state.selectedPromptFile = null;
-          state.promptFileContent = '';
-          state.promptFileDirty = false;
-          renderBody();
-          scheduleContextEstimate();
-          return;
-        }
-        const file = state.prompts.find((p) => p.relativePath === path);
-        state.selectedPromptFile = file || null;
-        state.promptFileDirty = false;
-        if (file) post({ type: 'loadPrompt', file });
-        renderBody();
-        scheduleContextEstimate();
-      });
-    }
-
-    const promptEditor = document.getElementById('prompt-editor');
-    if (promptEditor) {
-      promptEditor.addEventListener('input', (e) => {
-        state.promptFileContent = e.target.value;
-        state.promptFileDirty = true;
-      });
-    }
-
-    const promptEditorExpandBtn = document.getElementById('prompt-editor-expand-btn');
-    if (promptEditorExpandBtn) {
-      promptEditorExpandBtn.addEventListener('click', () => {
-        state.promptEditorExpanded = !state.promptEditorExpanded;
-        renderBody();
-      });
-    }
-
-    const saveSame = document.getElementById('prompt-save-same');
-    if (saveSame) {
-      saveSame.addEventListener('click', () => {
-        post({
-          type: 'savePrompt',
-          file: state.selectedPromptFile,
-          fileName: state.selectedPromptFile.fileName,
-          content: state.promptFileContent,
-        });
-        state.promptFileDirty = false;
-      });
-    }
-
-    const saveNew = document.getElementById('prompt-save-new');
-    if (saveNew) {
-      saveNew.addEventListener('click', () => {
-        const nameInput = document.getElementById('prompt-save-name');
-        let name = (nameInput.value || '').trim();
-        if (!name) {
-          toast('warn', 'Enter a file name before saving.');
-          return;
-        }
-        if (!name.endsWith('.md')) name += '.prompt.md';
-        post({ type: 'savePrompt', file: null, fileName: name, content: state.promptFileContent });
-        state.promptFileDirty = false;
-      });
+    const copyResponseBtn = document.getElementById('copy-response-btn');
+    if (copyResponseBtn) {
+      copyResponseBtn.addEventListener('click', () => copyResponseToClipboard());
     }
 
     const userText = document.getElementById('user-text');
@@ -571,7 +546,9 @@
     }
     state.streaming = true;
     state.collapsed.response = false; // reveal the response card so the user can watch it stream
-    state.responseText = '';
+    // responseText is intentionally NOT cleared here -- responses accumulate
+    // for the whole session (see the 'streamStart' handler, which appends a
+    // divider before this response's text starts arriving).
     state.contextSummary = null;
     state.lastUsage = null;
     state.pendingPromptTokens = null;
@@ -602,7 +579,7 @@
     }
     overlay.classList.add('open');
     const modelOptions = state.models.length
-      ? state.models.map((m) => `<option value="${esc(m.uid)}" ${m.uid === state.modelUid ? 'selected' : ''}>${esc(m.name)}</option>`).join('')
+      ? state.models.map((m) => `<option value="${esc(m.uid)}" ${m.uid === state.modelUid ? 'selected' : ''}>${esc(m.name)}${m.vendor ? ' (' + esc(m.vendor) + ')' : ''}</option>`).join('')
       : `<option value="">No models found</option>`;
 
     overlay.innerHTML = `
@@ -612,15 +589,30 @@
       </div>
       <div class="overlay-body">
         <div class="settings-section">
-          <h3>Connection</h3>
+          <h3>Copilot Model</h3>
           <div class="field">
-            <label class="field-label">Model to test</label>
+            <label class="field-label">Model used for sending requests and Test Connection</label>
             <select id="settings-model-select">${modelOptions}</select>
           </div>
+        </div>
+        <div class="settings-section">
+          <h3>Skills ${state.selectedSkills.size ? `<span class="badge">${state.selectedSkills.size}</span>` : ''}</h3>
+          ${skillsBodyHtml()}
+        </div>
+        <div class="settings-section">
+          <h3>Instructions ${state.selectedInstructions.size ? `<span class="badge">${state.selectedInstructions.size}</span>` : ''}</h3>
+          ${instructionsBodyHtml()}
+        </div>
+        <div class="settings-section">
+          <h3>Custom Prompts ${state.selectedPromptFile ? '<span class="badge">1</span>' : ''}</h3>
+          ${promptsBodyHtml()}
+        </div>
+        <div class="settings-section">
+          <h3>Connection</h3>
           <div class="btn-row">
             <button class="btn" id="test-conn-btn" ${state.testConnBusy ? 'disabled' : ''}>${state.testConnBusy ? 'Testing…' : 'Test Connection'}</button>
           </div>
-          <div class="hint">Sends the text "Who are you ?" to the selected model and shows its reply below.</div>
+          <div class="hint">Sends the text "Who are you ?" to the model selected above and shows its reply below.</div>
           <div class="response-panel ${state.testConnResult ? '' : 'empty'}" data-placeholder="No test run yet.">${state.testConnResult ? esc(state.testConnResult) : ''}</div>
           ${state.testConnUsage ? `<div class="context-summary">Tokens — sent: ${fmtTok(state.testConnUsage.promptTokens)} · received: ${fmtTok(state.testConnUsage.completionTokens)} · total: ${fmtTok(state.testConnUsage.totalTokens)}</div>` : ''}
         </div>
@@ -635,14 +627,21 @@
       </div>
     `;
 
+    wireSettings(overlay);
+  }
+
+  function wireSettings(overlay) {
     document.getElementById('settings-close').addEventListener('click', () => {
       state.settingsOpen = false;
       renderSettings();
     });
+
     document.getElementById('settings-model-select').addEventListener('change', (e) => {
       state.modelUid = e.target.value;
       renderBody();
+      scheduleContextEstimate();
     });
+
     document.getElementById('test-conn-btn').addEventListener('click', () => {
       if (!state.modelUid) {
         toast('warn', 'Select a model first.');
@@ -652,9 +651,87 @@
       renderSettings();
       post({ type: 'testConnection', modelUid: state.modelUid });
     });
+
     overlay.querySelectorAll('[data-wizard]').forEach((btn) => {
       btn.addEventListener('click', () => startWizard(btn.getAttribute('data-wizard')));
     });
+
+    overlay.querySelectorAll('input[type=checkbox][data-kind]').forEach((el) => {
+      el.addEventListener('change', (e) => {
+        const path = e.target.getAttribute('data-path');
+        const kind = e.target.getAttribute('data-kind');
+        const set = kind === 'skill' ? state.selectedSkills : state.selectedInstructions;
+        if (e.target.checked) set.add(path);
+        else set.delete(path);
+        renderSettings();
+        scheduleContextEstimate();
+      });
+    });
+
+    const promptSelect = document.getElementById('prompt-select');
+    if (promptSelect) {
+      promptSelect.addEventListener('change', (e) => {
+        const path = e.target.value;
+        if (!path) {
+          state.selectedPromptFile = null;
+          state.promptFileContent = '';
+          state.promptFileDirty = false;
+          renderSettings();
+          scheduleContextEstimate();
+          return;
+        }
+        const file = state.prompts.find((p) => p.relativePath === path);
+        state.selectedPromptFile = file || null;
+        state.promptFileDirty = false;
+        if (file) post({ type: 'loadPrompt', file });
+        renderSettings();
+        scheduleContextEstimate();
+      });
+    }
+
+    const promptEditor = document.getElementById('prompt-editor');
+    if (promptEditor) {
+      promptEditor.addEventListener('input', (e) => {
+        state.promptFileContent = e.target.value;
+        state.promptFileDirty = true;
+      });
+    }
+
+    const promptEditorExpandBtn = document.getElementById('prompt-editor-expand-btn');
+    if (promptEditorExpandBtn) {
+      promptEditorExpandBtn.addEventListener('click', () => {
+        state.promptEditorExpanded = !state.promptEditorExpanded;
+        renderSettings();
+      });
+    }
+
+    const saveSame = document.getElementById('prompt-save-same');
+    if (saveSame) {
+      saveSame.addEventListener('click', () => {
+        post({
+          type: 'savePrompt',
+          file: state.selectedPromptFile,
+          fileName: state.selectedPromptFile.fileName,
+          content: state.promptFileContent,
+        });
+        state.promptFileDirty = false;
+      });
+    }
+
+    const saveNew = document.getElementById('prompt-save-new');
+    if (saveNew) {
+      saveNew.addEventListener('click', () => {
+        const nameInput = document.getElementById('prompt-save-name');
+        let name = (nameInput.value || '').trim();
+        if (!name) {
+          toast('warn', 'Enter a file name before saving.');
+          return;
+        }
+        if (!name.endsWith('.md')) name += '.prompt.md';
+        post({ type: 'savePrompt', file: null, fileName: name, content: state.promptFileContent });
+        state.promptFileDirty = false;
+      });
+    }
   }
 
   function closeIcon() {
@@ -1196,22 +1273,32 @@
         state.skills = msg.skills;
         state.instructions = msg.instructions;
         state.prompts = msg.prompts;
-        renderBody();
+        // Skills/Instructions/Custom Prompts now live in Settings only.
+        if (state.settingsOpen) renderSettings();
         break;
 
       case 'promptContent':
         if (state.selectedPromptFile && state.selectedPromptFile.relativePath === msg.file.relativePath) {
           state.promptFileContent = msg.content;
           state.promptFileDirty = false;
-          renderBody();
+          if (state.settingsOpen) renderSettings();
         }
         break;
 
-      case 'streamStart':
+      case 'streamStart': {
         state.streaming = true;
-        state.responseText = '';
+        // Append, never replace: responses accumulate for the whole
+        // session until VS Code (or this view) is closed. A divider marks
+        // where each new exchange starts in the combined scrollback.
+        const wf = state.workflows.find((w) => w.id === state.workflowId);
+        const label = wf ? wf.label : 'Request';
+        const stamp = new Date().toLocaleString();
+        const divider = `${state.responseText ? '\n\n' : ''}───── ${stamp} · ${label} ─────\n\n`;
+        state.responseText += divider;
+        state.responseCount += 1;
         renderBody();
         break;
+      }
 
       case 'promptTokenCounted':
         if (msg.requestId === state.requestId) {
