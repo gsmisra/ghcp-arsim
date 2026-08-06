@@ -1,4 +1,6 @@
 {
+  "//": "admin_password below is a UI-gate speed bump for the Reset Session action ONLY -- it ships in plaintext inside the packaged .vsix (baked into dist/extension.js at build time) and is not a real access control. Read by esbuild.js at build time; tsc itself ignores this unrecognized top-level key.",
+  "admin_password": "misra",
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2021",

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HostMessage, WebviewMessage } from '../types';
+import { HostMessage, SessionTokenTotals, WebviewMessage } from '../types';
 import { WORKFLOWS, getWorkflow } from '../workflows';
 import { WIZARD_SCHEMAS } from '../wizards/wizardSchemas';
 import { renderMarkdown, computeFileName } from '../wizards/markdownRenderer';
@@ -11,7 +11,31 @@ import {
   writeGithubFile,
 } from '../github/fileDiscovery';
 import { buildContext } from '../github/contextBuilder';
-import { listModels, resolveModel, sendChat, testConnection } from '../copilot/copilotClient';
+import { countTokens, listModels, resolveModel, sendChat, testConnection } from '../copilot/copilotClient';
+import { TokenHistoryStore } from '../telemetry/tokenHistoryStore';
+import { exportTokenHistoryToDownloads } from '../telemetry/csvExport';
+import { promptForAdminPassword } from '../security/adminAuth';
+import { AttachedFilesStore, generateFileId } from '../fileIngest/attachedFilesStore';
+import { parseFile } from '../fileIngest';
+import { summarizeContent } from '../fileIngest/textStats';
+
+const TOKEN_SESSION_STATE_KEY = 'arsimTdsQe.tokenSession';
+const EMPTY_SESSION_TOTALS: SessionTokenTotals = {
+  requestCount: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  totalTokens: 0,
+};
+
+// Defensive upper bound on picked-file size, configurable since the right
+// ceiling depends on the host machine's memory, not just the file itself:
+// parsing (mammoth/pdfjs/xlsx/papaparse) fully materializes the file's
+// content as in-memory JS objects/strings, which for CSV/XLSX in particular
+// can expand well past the on-disk byte size (each cell becomes its own JS
+// string/object). Default 400MB per requirement; lower it in Settings on
+// memory-constrained machines, or if a specific very large/dense file
+// causes the extension host to struggle.
+const DEFAULT_MAX_ATTACH_FILE_MB = 400;
 
 /**
  * Hosts the extension's sole webview (the sidebar "home page") and is the
@@ -25,8 +49,22 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private readonly cancellations = new Map<string, vscode.CancellationTokenSource>();
+  private sessionTotals: SessionTokenTotals;
+  private readonly tokenHistory: TokenHistoryStore;
+  private readonly attachedFiles = new AttachedFilesStore();
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.sessionTotals = context.globalState.get<SessionTokenTotals>(
+      TOKEN_SESSION_STATE_KEY,
+      EMPTY_SESSION_TOTALS
+    );
+    this.tokenHistory = new TokenHistoryStore(context);
+  }
+
+  /** Called from `deactivate()` as a last-chance, best-effort persistence flush. */
+  public flushOnShutdown(): Thenable<void> {
+    return this.tokenHistory.flush();
+  }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -61,11 +99,70 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         this.post({
           type: 'init',
           workflows: WORKFLOWS,
-          defaultWorkflow: config.get('defaultWorkflow', 'test-case-creation') as never,
+          defaultWorkflow: config.get('defaultWorkflow', 'generic') as never,
           wizards: WIZARD_SCHEMAS,
         });
         await this.sendFileLists();
         await this.sendModels();
+        this.post({ type: 'tokenSession', session: this.sessionTotals });
+        // Warm the history cache now so the "Token Usage History" link
+        // opens instantly later instead of paying a disk read on first click.
+        await this.tokenHistory.load();
+        return;
+      }
+
+      case 'resetTokenSession': {
+        const authorized = await promptForAdminPassword('reset the token usage session totals');
+        if (!authorized) {
+          this.post({ type: 'toast', level: 'warn', message: 'Reset session cancelled: admin password not confirmed.' });
+          return;
+        }
+        this.sessionTotals = { ...EMPTY_SESSION_TOTALS };
+        await this.context.globalState.update(TOKEN_SESSION_STATE_KEY, this.sessionTotals);
+        this.post({ type: 'tokenSession', session: this.sessionTotals });
+        this.post({ type: 'toast', level: 'info', message: 'Session totals reset.' });
+        return;
+      }
+
+      case 'loadTokenHistory': {
+        await this.tokenHistory.load();
+        this.post({ type: 'tokenHistory', entries: this.tokenHistory.getAllNewestFirst() });
+        return;
+      }
+
+      case 'clearTokenHistory': {
+        this.tokenHistory.clear();
+        await this.tokenHistory.flush();
+        this.post({ type: 'tokenHistory', entries: [] });
+        this.post({ type: 'toast', level: 'info', message: 'Token usage history cleared.' });
+        return;
+      }
+
+      case 'exportTokenHistoryCsv': {
+        if (message.entries.length === 0) {
+          this.post({ type: 'toast', level: 'warn', message: 'No rows to export.' });
+          return;
+        }
+        try {
+          const fileUri = await exportTokenHistoryToDownloads(message.entries);
+          const reveal = 'Reveal in Folder';
+          vscode.window
+            .showInformationMessage(
+              `Exported ${message.entries.length} row(s) to ${fileUri.fsPath}`,
+              reveal
+            )
+            .then((choice) => {
+              if (choice === reveal) {
+                vscode.commands.executeCommand('revealFileInOS', fileUri);
+              }
+            });
+        } catch (error) {
+          this.post({
+            type: 'toast',
+            level: 'error',
+            message: `CSV export failed: ${toMessage(error)}`,
+          });
+        }
         return;
       }
 
@@ -93,8 +190,14 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
       case 'testConnection': {
         try {
-          const result = await testConnection(message.modelUid);
-          this.post({ type: 'testConnectionResult', ok: true, ...result });
+          const { model, response, promptTokens, completionTokens } = await testConnection(
+            message.modelUid
+          );
+          const usage =
+            promptTokens !== null && completionTokens !== null
+              ? { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens }
+              : undefined;
+          this.post({ type: 'testConnectionResult', ok: true, model, response, usage });
         } catch (error) {
           this.post({ type: 'testConnectionResult', ok: false, error: toMessage(error) });
         }
@@ -118,9 +221,145 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
+      case 'browseFile':
+        await this.handleBrowseFile();
+        return;
+
+      case 'updateFileSelection': {
+        const entry = this.attachedFiles.updateSelection(message.fileId, message.selection);
+        if (!entry) {
+          this.post({
+            type: 'fileAttachError',
+            message: 'That attached file is no longer available -- please Browse again.',
+          });
+          return;
+        }
+        const content = this.attachedFiles.currentContent(message.fileId) ?? '';
+        this.post({ type: 'fileSelectionUpdated', preview: summarizeContent(message.fileId, content) });
+        return;
+      }
+
+      case 'clearAttachedFile':
+        this.attachedFiles.remove(message.fileId);
+        this.post({ type: 'fileCleared' });
+        return;
+
+      case 'estimateContext':
+        await this.handleEstimateContext(message);
+        return;
+
       default:
         return;
     }
+  }
+
+  private async handleBrowseFile(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: 'Attach to Request',
+      filters: {
+        'Supported documents': ['docx', 'pdf', 'csv', 'xlsx', 'xls', 'txt', 'md', 'log', 'json'],
+        'All files': ['*'],
+      },
+    });
+    if (!picked || picked.length === 0) {
+      // User cancelled -- not an error, but the webview already flipped into
+      // its "parsing" state optimistically on click, so it must be told to
+      // stand down or the Browse button would stay disabled for the rest of
+      // the session.
+      this.post({ type: 'fileCleared' });
+      return;
+    }
+
+    const uri = picked[0];
+    this.post({ type: 'fileParsing' });
+
+    try {
+      const maxMb = vscode.workspace
+        .getConfiguration('arsimTdsQe')
+        .get<number>('maxAttachFileSizeMB', DEFAULT_MAX_ATTACH_FILE_MB);
+      const maxBytes = maxMb * 1024 * 1024;
+
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.size > maxBytes) {
+        throw new Error(
+          `File is ${(stat.size / (1024 * 1024)).toFixed(1)} MB, which exceeds the ${maxMb} MB attach limit (arsimTdsQe.maxAttachFileSizeMB).`
+        );
+      }
+
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      // Wrap without copying: Buffer.from(bytes) would allocate and copy a
+      // second full-size buffer, doubling peak memory during the moment
+      // that matters most for a large attachment. Buffer.from(arrayBuffer,
+      // offset, length) instead views the same underlying memory.
+      const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const fileName = uri.path.split('/').pop() || 'attached-file';
+      const fileId = generateFileId();
+
+      const { parsed, meta } = await parseFile(buffer, fileName, fileId);
+      this.attachedFiles.add(meta, parsed);
+
+      // A large source file almost always means the model's context window
+      // will be the binding constraint, not this extension -- point the
+      // user at the range/column/sheet controls proactively rather than
+      // waiting for them to hit the Context Limit bar's exceeded state.
+      const sizeMb = stat.size / (1024 * 1024);
+      if (sizeMb > 100) {
+        const sizeNote = `This is a large file (${sizeMb.toFixed(0)} MB). Use "Control the data sent in the context" below to narrow what's actually sent to the model -- the full extracted content may exceed its context window.`;
+        meta.warning = meta.warning ? `${meta.warning} ${sizeNote}` : sizeNote;
+      }
+
+      const content = this.attachedFiles.currentContent(fileId) ?? '';
+      this.post({ type: 'fileAttached', meta, preview: summarizeContent(fileId, content) });
+    } catch (error) {
+      this.post({ type: 'fileAttachError', message: toMessage(error) });
+    }
+  }
+
+  private async handleEstimateContext(
+    message: Extract<WebviewMessage, { type: 'estimateContext' }>
+  ): Promise<void> {
+    try {
+      const workflow = getWorkflow(message.workflowId);
+      const model = await resolveModel(message.modelUid);
+      const maxTokens = typeof model.maxInputTokens === 'number' ? model.maxInputTokens : null;
+
+      const attachedFile = message.attachedFileId
+        ? this.buildAttachedFilePayload(message.attachedFileId)
+        : null;
+
+      const { summary, promptTokens } = await buildContext({
+        workflow,
+        userText: message.userText,
+        selectedSkills: message.selectedSkills,
+        selectedInstructions: message.selectedInstructions,
+        selectedPromptFile: message.selectedPromptFile,
+        attachedFile,
+        modelMaxInputTokens: maxTokens,
+        countTokens: (text) => countTokens(model, vscode.LanguageModelChatMessage.User(text)),
+      });
+
+      const usedTokens = promptTokens ?? 0;
+      const exceeded = maxTokens !== null && usedTokens > maxTokens;
+
+      this.post({
+        type: 'contextMeter',
+        usedTokens,
+        maxTokens,
+        exceeded,
+        lastLineIncluded: exceeded ? summary.attachedFileLastLine : null,
+      });
+    } catch {
+      // Context estimation is advisory-only UI feedback -- a failure here
+      // (e.g. no model selected yet) should never surface as an error toast.
+    }
+  }
+
+  private buildAttachedFilePayload(fileId: string): { fileName: string; content: string } | null {
+    const entry = this.attachedFiles.get(fileId);
+    if (!entry) return null;
+    const content = this.attachedFiles.currentContent(fileId) ?? '';
+    return { fileName: entry.meta.fileName, content };
   }
 
   private async handleSendPrompt(
@@ -136,26 +375,84 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     try {
       const workflow = getWorkflow(message.workflowId);
       const model = await resolveModel(message.modelUid);
+      const attachedFile = message.attachedFileId
+        ? this.buildAttachedFilePayload(message.attachedFileId)
+        : null;
 
-      const { content, summary } = await buildContext({
+      // The context budget (and, when possible, the exact token count
+      // reported below) is derived from *this* model's real
+      // maxInputTokens, recomputed fresh on every send -- switch to a
+      // bigger-window model and more of an attached document goes
+      // through by design, not just up to a fixed character ceiling.
+      const maxInputTokens = typeof model.maxInputTokens === 'number' ? model.maxInputTokens : null;
+
+      const { content, summary, promptTokens: computedPromptTokens } = await buildContext({
         workflow,
         userText: message.userText,
         selectedSkills: message.selectedSkills,
         selectedInstructions: message.selectedInstructions,
         selectedPromptFile: message.selectedPromptFile,
+        attachedFile,
+        modelMaxInputTokens: maxInputTokens,
+        countTokens: (text) => countTokens(model, vscode.LanguageModelChatMessage.User(text), cts.token),
       });
+
+      // buildContext() already measured this against the model's real
+      // tokenizer as part of budgeting (when a real token budget was
+      // available); reuse that instead of counting a second time. Falls
+      // back to a fresh count only if that didn't happen (e.g. model
+      // reported no maxInputTokens).
+      const promptTokens =
+        computedPromptTokens ??
+        (await (async () => {
+          const [systemTokens, contentTokens] = await Promise.all([
+            countTokens(model, vscode.LanguageModelChatMessage.User(workflow.systemPrompt), cts.token),
+            countTokens(model, vscode.LanguageModelChatMessage.User(content), cts.token),
+          ]);
+          return (systemTokens ?? 0) + (contentTokens ?? 0);
+        })());
+      this.post({ type: 'promptTokenCounted', requestId, promptTokens });
 
       this.post({ type: 'streamStart', requestId });
 
-      await sendChat(model, workflow.systemPrompt, content, {
+      const responseText = await sendChat(model, workflow.systemPrompt, content, {
         token: cts.token,
         onChunk: (text) => this.post({ type: 'streamChunk', requestId, text }),
       });
+
+      const completionTokens = (await countTokens(model, responseText, cts.token)) ?? 0;
+      const usage = {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+      };
+
+      this.sessionTotals = {
+        requestCount: this.sessionTotals.requestCount + 1,
+        promptTokens: this.sessionTotals.promptTokens + usage.promptTokens,
+        completionTokens: this.sessionTotals.completionTokens + usage.completionTokens,
+        totalTokens: this.sessionTotals.totalTokens + usage.totalTokens,
+      };
+      await this.context.globalState.update(TOKEN_SESSION_STATE_KEY, this.sessionTotals);
+
+      // Append to the durable, in-memory-then-flushed history log for this
+      // interaction. Flushing immediately (rather than only on shutdown)
+      // means a crash or forced window close never loses a completed
+      // request's usage record.
+      this.tokenHistory.record({
+        workflowId: workflow.id,
+        workflowLabel: workflow.label,
+        modelName: model.name || model.id || 'unknown',
+        usage,
+      });
+      await this.tokenHistory.flush();
 
       this.post({
         type: 'streamDone',
         requestId,
         contextSummary: { ...summary, modelName: model.name || model.id || 'unknown' },
+        usage,
+        session: this.sessionTotals,
       });
     } catch (error) {
       this.post({ type: 'streamError', requestId, message: toMessage(error) });

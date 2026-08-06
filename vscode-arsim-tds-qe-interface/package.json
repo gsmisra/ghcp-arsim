@@ -2,7 +2,7 @@
   "name": "arsim-tds-qe-ghcp-interface",
   "displayName": "ARSIM TDS QE GHCP Interface",
   "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: Test Case Creation, Automation Script Creation, PR Analysis, PROD Incident Analysis and Test Failure Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "publisher": "arsim-tds",
   "private": true,
   "license": "UNLICENSED",
@@ -75,18 +75,37 @@
           "type": "number",
           "default": 12000,
           "minimum": 500,
-          "description": "Maximum characters read from a single selected skill/instruction/prompt file when it is included in the LLM context."
+          "description": "Maximum characters read from a single selected skill/instruction/prompt file when it is included in the LLM context. Does NOT apply to an attached file -- see arsimTdsQe.maxAttachedFileContextChars."
+        },
+        "arsimTdsQe.maxAttachedFileContextChars": {
+          "type": "number",
+          "default": 200000,
+          "minimum": 1000,
+          "description": "Hard ceiling (in characters) on an attached file's content included in the LLM context. Kept separate from arsimTdsQe.maxContextCharsPerFile, which is sized for short Skill/Instruction files, not full documents. In practice this is usually NOT the binding limit: the effective budget scales down to the selected model's real context window (maxInputTokens) automatically, recomputed before every request -- this setting only matters as an upper ceiling if the model's window is very large."
         },
         "arsimTdsQe.maxTotalContextChars": {
           "type": "number",
-          "default": 48000,
+          "default": 120000,
           "minimum": 1000,
-          "description": "Maximum total characters of combined context (skills + instructions + prompt + user text) sent to the model in a single request."
+          "description": "Hard ceiling (in characters) on total combined context (skills + instructions + prompt + attached file + user text) sent to the model in a single request. Like maxAttachedFileContextChars, the effective budget scales down automatically to the selected model's real context window when known -- this setting is the upper bound for models with very large windows, or the fallback when a model doesn't report its window size."
         },
         "arsimTdsQe.defaultWorkflow": {
           "type": "string",
-          "default": "test-case-creation",
-          "description": "Workflow id selected by default when the panel first opens."
+          "default": "generic",
+          "description": "Workflow id selected by default when the panel first opens. 'generic' shows as '-- Select --' and sends requests with no workflow-specific instructions."
+        },
+        "arsimTdsQe.maxTokenHistoryEntries": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 50,
+          "description": "Maximum number of token-usage history entries retained locally. Oldest entries are dropped beyond this limit."
+        },
+        "arsimTdsQe.maxAttachFileSizeMB": {
+          "type": "number",
+          "default": 400,
+          "minimum": 1,
+          "maximum": 2048,
+          "description": "Maximum size (MB) of a file that can be attached via Browse for .docx/.pdf/.csv/.xlsx/.xls/text files. Parsing fully loads the file into memory as JS objects/strings, which for CSV/XLSX in particular can use significantly more memory than the file's on-disk size -- lower this on memory-constrained machines if large attachments cause the extension host to struggle."
         }
       }
     }
@@ -100,9 +119,15 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/papaparse": "^5.5.2",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.4.0"
+    "jszip": "^3.10.1",
+    "mammoth": "^1.12.0",
+    "papaparse": "^5.5.4",
+    "pdfjs-dist": "^3.11.174",
+    "typescript": "^5.4.0",
+    "xlsx": "^0.18.5"
   }
 }

@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import { MainViewProvider } from './panels/MainViewProvider';
 
+let activeProvider: MainViewProvider | undefined;
+
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new MainViewProvider(context);
+  activeProvider = provider;
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(MainViewProvider.viewId, provider, {
@@ -23,7 +26,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-export function deactivate(): void {
-  // No background resources (no localhost servers, no timers) are held by
-  // this extension, so there is nothing to tear down explicitly.
+export function deactivate(): Thenable<void> | undefined {
+  // Best-effort final flush of any not-yet-persisted token usage history.
+  // Individual requests already flush immediately after completing, so
+  // this is a safety net, not the primary persistence path.
+  return activeProvider?.flushOnShutdown();
 }

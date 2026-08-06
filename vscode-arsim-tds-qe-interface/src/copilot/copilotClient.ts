@@ -99,14 +99,37 @@ export async function sendChat(
   return full;
 }
 
+/**
+ * Counts tokens for a piece of content using the *selected model's own*
+ * tokenizer (`LanguageModelChat.countTokens`). This is what makes the
+ * token panel trustworthy: it's not a generic heuristic (e.g. chars/4) --
+ * it's the same tokenizer the model itself will bill against. If a given
+ * model doesn't support counting (older/limited providers), we fail soft
+ * and surface `null` so the UI can show "unavailable" instead of a
+ * misleading zero.
+ */
+export async function countTokens(
+  model: vscode.LanguageModelChat,
+  content: string | vscode.LanguageModelChatMessage,
+  token?: vscode.CancellationToken
+): Promise<number | null> {
+  try {
+    const count = await model.countTokens(content, token);
+    return typeof count === 'number' && Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function testConnection(
   modelUid: string
-): Promise<{ model: string; response: string }> {
+): Promise<{ model: string; response: string; promptTokens: number | null; completionTokens: number | null }> {
   const model = await resolveModel(modelUid);
+  const probe = 'Who are you ?';
   let text = '';
   try {
     const response = await model.sendRequest(
-      [vscode.LanguageModelChatMessage.User('Who are you ?')],
+      [vscode.LanguageModelChatMessage.User(probe)],
       {},
       undefined
     );
@@ -116,7 +139,11 @@ export async function testConnection(
   } catch (error) {
     throw translateLmError(error);
   }
-  return { model: model.name || model.id || 'unknown', response: text.trim() };
+  const [promptTokens, completionTokens] = await Promise.all([
+    countTokens(model, probe),
+    countTokens(model, text),
+  ]);
+  return { model: model.name || model.id || 'unknown', response: text.trim(), promptTokens, completionTokens };
 }
 
 function translateLmError(error: unknown): Error {

@@ -9,8 +9,11 @@ so requests are as fast as Copilot Chat itself.
 ## Features
 
 - **Home view** (activity bar icon) titled **"ARSIM TDS QE GHCP Interface"**.
-- **Workflow to perform** dropdown covering five workflows, each implemented
-  as its own module under `src/workflows/`:
+- **Workflow to perform** dropdown, defaulting to **"-- Select --"**
+  (`src/workflows/generic.ts`) -- a general-purpose mode with no fixed
+  output contract, so Skills/Instructions/a Custom Prompt can be used on
+  their own for ad hoc requests -- plus five task-specific workflows, each
+  implemented as its own module under `src/workflows/`:
   - Test Case Creation (`testCaseCreation.ts`)
   - Automation Script Creation (`automationScriptCreation.ts`)
   - PR Analysis (`prAnalysis.ts`)
@@ -31,15 +34,72 @@ so requests are as fast as Copilot Chat itself.
     skill / instruction / prompt file and save it to the right `.github/`
     subfolder.
 
+## Token usage tracking
+
+Every request's prompt/completion token counts (from the selected model's
+own tokenizer, via `LanguageModelChat.countTokens`) are shown live in a
+sticky footer panel, alongside a running session total. A **"Token Usage
+History"** link opens the full, durable log -- one entry per request, with
+timestamp, workflow, model, sent/received/total tokens, and the local
+hostname -- persisted to a JSON file under the extension's global storage
+directory (`src/telemetry/tokenHistoryStore.ts`). Entries are flushed to
+disk immediately after each request (not only on shutdown), so the log
+survives crashes or a forced window close, not just clean exits.
+
+## Attaching a file to a request
+
+Click **Browse…** under Your Request to pick a `.docx`, `.pdf`, `.csv`,
+`.xlsx`/`.xls`, or plain text file via VS Code's native file picker
+(`src/fileIngest/`). The file is parsed once in the extension host and its
+content is included alongside your prompt. Files up to
+`arsimTdsQe.maxAttachFileSizeMB` (default **400MB**) are accepted; parsing
+fully loads the file into memory, so on memory-constrained machines it's
+worth lowering this setting. **Control the data sent in the
+context** opens a panel with controls auto-selected by detected type:
+
+- **PDF** -- exact page range (PDFs store real page boundaries).
+- **DOCX** -- an approximate page range, clearly labeled as such: `.docx`
+  files don't store fixed page numbers (Word computes pagination at
+  print/display time), so this divides the text evenly across detected
+  manual page-break markers. Tables in both PDF and DOCX are included as
+  extracted/flattened text.
+- **CSV** -- comma-separated column list plus a row range.
+- **Excel** -- auto-detected sheet names as checkboxes, each with its own
+  column list and row range.
+
+A thin **Context Limit** bar (green → amber → red) tracks live usage
+against the selected model's real context window
+(`LanguageModelChat.maxInputTokens`), debounced so it doesn't fire on every
+keystroke. If the budget is exceeded, the UI names the exact last line of
+attached-file content that made it into the request.
+
 ## Minimal, auditable context
 
 `src/github/contextBuilder.ts` assembles exactly what is sent to the model:
-only checked Skill/Instruction files, the selected prompt file (if any), and
-the user's own request text -- nothing else. Empty sections are omitted
-entirely (no "None selected" filler), and per-file / total character budgets
-(`arsimTdsQe.maxContextCharsPerFile`, `arsimTdsQe.maxTotalContextChars`) cap
-what can be sent, with any truncation surfaced back to the user in the
-response panel's context summary.
+only checked Skill/Instruction files, the selected prompt file (if any), an
+attached file (if any), and the user's own request text -- nothing else.
+Empty sections are omitted entirely (no "None selected" filler).
+
+The user's own request text is always reserved first and never truncated to
+make room for anything else (Skills/Instructions/an attached file exist to
+*support* answering it, not compete with it).
+
+**The context budget scales with the selected model, recomputed on every
+request.** Rather than a fixed character ceiling, the effective budget for
+the attached file and the total request is derived from the selected
+model's real `LanguageModelChat.maxInputTokens` (with a safety margin for
+tokenizer-estimate slack), so switching to a model with a larger context
+window genuinely lets more of an attached document through -- not just up
+to some fixed number. A first pass sizes content using a standard
+chars-per-token estimate; if the model's own tokenizer (via `countTokens`)
+reports the real count came in over budget, the attached file is re-trimmed
+once more against the measured overage. `arsimTdsQe.maxContextCharsPerFile`
+(Skill/Instruction files only), `arsimTdsQe.maxAttachedFileContextChars`,
+and `arsimTdsQe.maxTotalContextChars` remain as hard ceilings/fallbacks --
+they bind only when a model's window is very large or doesn't report a
+window size at all. Any truncation is surfaced back to the user in the
+response panel's context summary, including which budget source (model vs.
+config) was used.
 
 ## Compatibility
 

@@ -1,5 +1,19 @@
 :root {
   color-scheme: light dark;
+  /* TD Bank brand green. Chosen per-theme for contrast: the deeper shade
+     reads clearly on light backgrounds, the brighter shade on dark ones.
+     Everything brand-colored (headings, segment headers, icons, primary
+     buttons, links) reads off these three variables. */
+  --td-green: #00843d;
+  --td-green-hover: #00692f;
+  --td-green-soft: rgba(0, 132, 61, 0.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --td-green: #3ecb84;
+    --td-green-hover: #58d89a;
+    --td-green-soft: rgba(62, 203, 132, 0.18);
+  }
 }
 
 * {
@@ -10,15 +24,19 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--vscode-font-family, sans-serif);
-  font-size: 13px;
+  font-size: 14.5px;
   color: var(--vscode-foreground);
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+html, body {
+  height: 100%;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 /* ---------- Header ---------- */
@@ -36,15 +54,16 @@ body {
 }
 
 .header h1 {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   margin: 0;
   letter-spacing: 0.2px;
   line-height: 1.3;
+  color: var(--td-green);
 }
 
 .header .subtitle {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground);
   margin-top: 2px;
 }
@@ -52,10 +71,10 @@ body {
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;
-  color: var(--vscode-foreground);
+  color: var(--td-green);
   border-radius: 6px;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -63,20 +82,21 @@ body {
   flex: none;
 }
 .icon-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+  background: var(--td-green-soft);
 }
 .icon-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
 }
 
 /* ---------- Body / sections ---------- */
 .body {
   flex: 1;
-  padding: 10px 12px 24px;
+  overflow-y: auto;
+  padding: 14px 14px 28px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
 }
 
 .card {
@@ -90,53 +110,62 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 12px;
+  padding: 11px 14px;
   cursor: pointer;
   user-select: none;
 }
 
 .card-header:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.08));
+  background: var(--td-green-soft);
 }
 
 .card-title {
-  font-weight: 600;
-  font-size: 12.5px;
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--td-green);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
 }
 
 .badge {
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
+  background: var(--td-green);
+  color: #ffffff;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 10.5px;
   padding: 1px 7px;
   font-weight: 600;
 }
 
 .chevron {
   transition: transform 0.15s ease;
-  opacity: 0.7;
+  color: var(--td-green);
+  opacity: 0.85;
 }
 .card.collapsed .chevron {
   transform: rotate(-90deg);
 }
 
 .card-body {
-  padding: 0 12px 12px;
+  padding: 4px 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .card.collapsed .card-body {
   display: none;
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 label.field-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--vscode-descriptionForeground);
   text-transform: uppercase;
@@ -145,15 +174,16 @@ label.field-label {
 
 select,
 input[type='text'],
+input[type='number'],
 textarea {
   width: 100%;
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 5px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 
 select:focus,
@@ -165,8 +195,11 @@ textarea:focus {
 
 textarea {
   resize: vertical;
-  min-height: 64px;
-  line-height: 1.4;
+  min-height: 72px;
+  line-height: 1.45;
+}
+textarea.expanded {
+  min-height: 50vh;
 }
 
 .select-wrap {
@@ -174,12 +207,12 @@ textarea {
 }
 
 .hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 
 .empty-hint {
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--vscode-descriptionForeground);
   padding: 6px 2px;
 }
@@ -189,7 +222,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 160px;
+  max-height: 170px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -198,7 +231,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 6px;
+  padding: 5px 6px;
   border-radius: 5px;
   cursor: pointer;
 }
@@ -206,13 +239,13 @@ textarea {
   background: var(--vscode-list-hoverBackground);
 }
 .check-row input[type='checkbox'] {
-  accent-color: var(--vscode-button-background);
-  width: 14px;
-  height: 14px;
+  accent-color: var(--td-green);
+  width: 15px;
+  height: 15px;
   flex: none;
 }
 .check-row span {
-  font-size: 12.5px;
+  font-size: 13.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -220,32 +253,33 @@ textarea {
 
 /* ---------- buttons ---------- */
 .btn {
-  border: none;
+  border: 1px solid transparent;
   border-radius: 6px;
-  padding: 7px 14px;
-  font-size: 12.5px;
-  font-weight: 500;
+  padding: 8px 15px;
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background: var(--td-green);
+  color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
 }
 .btn:hover {
-  background: var(--vscode-button-hoverBackground);
+  background: var(--td-green-hover);
 }
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .btn.secondary {
-  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  background: transparent;
+  border-color: var(--td-green);
+  color: var(--td-green);
 }
 .btn.secondary:hover {
-  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.3));
+  background: var(--td-green-soft);
 }
 .btn.block {
   width: 100%;
@@ -266,14 +300,29 @@ textarea {
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
   border-radius: 6px;
   background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
-  padding: 8px 10px;
+  padding: 9px 11px;
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  font-size: 13.5px;
   white-space: pre-wrap;
-  word-break: break-word;
+  /* No forced mid-word breaking: ordinary text still wraps at spaces via
+     pre-wrap above, but a genuinely unbreakable long token (a URL, a hash,
+     an unbroken code line) is left intact and reachable via the horizontal
+     scrollbar below, instead of being force-hyphenated into gibberish. */
+  overflow-wrap: normal;
   max-height: 340px;
-  overflow-y: auto;
+  max-width: 100%;
   min-height: 40px;
+  min-width: 160px;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  /* Drag-resize in both directions from the bottom-right corner, on top of
+     the Expand/Collapse toggle's preset larger size -- useful once the
+     sidebar itself has been widened. */
+  resize: both;
+}
+.response-panel.expanded {
+  max-height: 65vh;
 }
 
 .response-panel.empty::before {
@@ -287,7 +336,7 @@ textarea {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--vscode-charts-green, #3fb950);
+  background: #ffffff;
   margin-left: 6px;
   animation: pulse 1s infinite ease-in-out;
 }
@@ -297,11 +346,101 @@ textarea {
 }
 
 .context-summary {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground);
   border-top: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.3));
   padding-top: 6px;
   margin-top: 4px;
+}
+
+/* ---------- attached file ---------- */
+.attached-file-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--td-green);
+  border-radius: 6px;
+  background: var(--td-green-soft);
+}
+.attached-file-warning {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a86400;
+  background: rgba(204, 138, 0, 0.14);
+  border: 1px solid #cc8a00;
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+@media (prefers-color-scheme: dark) {
+  .attached-file-warning { color: #e0a942; }
+}
+.attached-file-name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- context limit meter ---------- */
+.context-meter-field {
+  gap: 4px;
+}
+.context-meter-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(128, 128, 128, 0.25);
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  overflow: hidden;
+}
+.context-meter-fill {
+  height: 100%;
+  min-width: 4px; /* keep the color visibly readable even at near-zero usage */
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+.context-meter-fill.green { background: var(--td-green); }
+.context-meter-fill.amber { background: #cc8a00; }
+.context-meter-fill.red { background: var(--vscode-errorForeground, #f14c4c); }
+.context-meter-warning {
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f14c4c);
+  background: rgba(241, 76, 76, 0.1);
+  border: 1px solid var(--vscode-errorForeground, #f14c4c);
+  border-radius: 6px;
+  padding: 7px 9px;
+  line-height: 1.5;
+}
+.context-meter-warning code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  background: rgba(128, 128, 128, 0.18);
+  padding: 1px 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+.context-summary code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  background: rgba(128, 128, 128, 0.18);
+  padding: 1px 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+/* ---------- control-context panel ---------- */
+.sheet-selection-block {
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.range-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 /* ---------- overlays (Settings + Wizard) ---------- */
@@ -327,24 +466,25 @@ textarea {
   border-bottom: 1px solid var(--vscode-panel-border, transparent);
 }
 .overlay-header h2 {
-  font-size: 13px;
+  font-size: 15px;
   margin: 0;
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--td-green);
 }
 .overlay-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .wizard-progress {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 .wizard-progress .bar {
@@ -362,11 +502,12 @@ textarea {
 
 .wizard-step h3 {
   margin: 0 0 2px;
-  font-size: 13px;
+  font-size: 14.5px;
+  color: var(--td-green);
 }
 .wizard-step p.step-desc {
   margin: 0 0 10px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--vscode-descriptionForeground);
 }
 .field {
@@ -407,6 +548,146 @@ textarea {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ---------- token usage footer ---------- */
+.token-footer {
+  flex: none;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  padding: 7px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.token-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.token-footer-title {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--td-green);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--td-green);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+.link-btn:disabled {
+  color: var(--vscode-descriptionForeground);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.token-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.token-footer-sep {
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+}
+
+/* ---------- history filters ---------- */
+.history-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.history-filters .field {
+  margin-bottom: 0;
+}
+
+/* ---------- history table ---------- */
+.history-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 220px);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.history-table th,
+.history-table td {
+  padding: 7px 9px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+.history-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--vscode-editor-background);
+  font-weight: 700;
+  color: var(--td-green);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+.history-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.history-table tbody tr:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.history-table td.num,
+.history-table th.num {
+  text-align: right;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.token-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.token-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.token-stat .token-label {
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.token-stat .token-value {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-value .tok-up { color: var(--vscode-charts-blue, #3794ff); }
+.token-value .tok-down { color: var(--vscode-charts-green, #3fb950); }
+.token-value .tok-total { color: var(--vscode-foreground); font-weight: 600; }
+
 .settings-section {
   display: flex;
   flex-direction: column;
@@ -418,9 +699,10 @@ textarea {
   border-bottom: none;
 }
 .settings-section h3 {
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: var(--vscode-descriptionForeground);
+  color: var(--td-green);
+  font-weight: 700;
 }
