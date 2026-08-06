@@ -7,6 +7,14 @@
   --td-green: #00843d;
   --td-green-hover: #00692f;
   --td-green-soft: rgba(0, 132, 61, 0.14);
+  /* -apple-system/BlinkMacSystemFont resolve to San Francisco on macOS/iOS
+     automatically; everywhere else (Windows/Linux) this falls through to
+     Segoe UI Variable / Segoe UI, Microsoft's closest equivalent in
+     spirit (clean, humanist, UI-optimized) -- SF itself isn't licensed
+     for embedding on the web, so this is the standard way sites match
+     Apple's type feel across platforms. */
+  --font-apple: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Segoe UI Variable Display', 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -23,10 +31,12 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: var(--vscode-font-family, sans-serif);
-  font-size: 14.5px;
+  font-family: var(--font-apple);
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--vscode-foreground);
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  -webkit-font-smoothing: antialiased;
 }
 
 html, body {
@@ -54,10 +64,10 @@ html, body {
 }
 
 .header h1 {
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   margin: 0;
-  letter-spacing: 0.2px;
+  letter-spacing: -0.3px;
   line-height: 1.3;
   color: var(--td-green);
 }
@@ -72,7 +82,7 @@ html, body {
   background: transparent;
   border: 1px solid transparent;
   color: var(--td-green);
-  border-radius: 6px;
+  border-radius: 8px;
   width: 30px;
   height: 30px;
   display: flex;
@@ -116,9 +126,11 @@ html, body {
 
 .card {
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--vscode-editor-background);
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.15s ease;
 }
 
 .card-header {
@@ -135,8 +147,9 @@ html, body {
 }
 
 .card-title {
-  font-weight: 700;
-  font-size: 14.5px;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.1px;
   color: var(--td-green);
   display: flex;
   align-items: center;
@@ -201,10 +214,11 @@ textarea {
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 5px;
-  padding: 7px 9px;
+  border-radius: 8px;
+  padding: 8px 10px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 14.5px;
+  transition: border-color 0.15s ease, outline-color 0.15s ease;
 }
 
 select:focus,
@@ -217,10 +231,21 @@ textarea:focus {
 textarea {
   resize: vertical;
   min-height: 72px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 textarea.expanded {
   min-height: 50vh;
+}
+
+/* The Request input and the Response output are the two areas people
+   actually read/write for real -- same font, same larger size, same
+   generous line-height, so nothing shifts visually going from typing a
+   request to reading the reply. */
+#user-text,
+.response-panel {
+  font-family: var(--font-apple);
+  font-size: 16px;
+  line-height: 1.65;
 }
 
 .select-wrap {
@@ -275,9 +300,9 @@ textarea.expanded {
 /* ---------- buttons ---------- */
 .btn {
   border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 8px 15px;
-  font-size: 13.5px;
+  border-radius: 9px;
+  padding: 9px 16px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   background: var(--td-green);
@@ -286,9 +311,13 @@ textarea.expanded {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
 }
 .btn:hover {
   background: var(--td-green-hover);
+}
+.btn:active {
+  transform: scale(0.98);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -317,13 +346,14 @@ textarea.expanded {
 }
 
 /* ---------- prompt / response ---------- */
+/* font-family/font-size/line-height for this are set by the shared
+   "#user-text, .response-panel" rule above -- kept in one place so the
+   Request and Response areas can never drift apart. */
 .response-panel {
   border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
-  padding: 9px 11px;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 13.5px;
+  padding: 10px 12px;
   white-space: pre-wrap;
   /* No forced mid-word breaking: ordinary text still wraps at spaces via
      pre-wrap above, but a genuinely unbreakable long token (a URL, a hash,
@@ -349,7 +379,7 @@ textarea.expanded {
 .response-panel.empty::before {
   content: attr(data-placeholder);
   color: var(--vscode-descriptionForeground);
-  font-family: var(--vscode-font-family);
+  font-family: var(--font-apple);
 }
 
 .streaming-dot {
@@ -487,9 +517,10 @@ textarea.expanded {
   border-bottom: 1px solid var(--vscode-panel-border, transparent);
 }
 .overlay-header h2 {
-  font-size: 15px;
+  font-size: 16px;
   margin: 0;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.2px;
   color: var(--td-green);
 }
 .overlay-body {
@@ -523,7 +554,9 @@ textarea.expanded {
 
 .wizard-step h3 {
   margin: 0 0 2px;
-  font-size: 14.5px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
   color: var(--td-green);
 }
 .wizard-step p.step-desc {
@@ -737,6 +770,7 @@ textarea.expanded {
 }
 .settings-section:last-child {
   border-bottom: none;
+  padding-bottom: 0;
 }
 .settings-section h3 {
   font-size: 13px;
@@ -745,4 +779,33 @@ textarea.expanded {
   letter-spacing: 0.4px;
   color: var(--td-green);
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Collapsible variant (Skills/Instructions/Custom Prompts/Connection/
+   Author Content) -- the always-visible "Copilot Model" section keeps the
+   older flat h3-then-content markup and isn't affected by these rules. */
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.settings-section .chevron {
+  color: var(--td-green);
+  transition: transform 0.15s ease;
+}
+.settings-section.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+.settings-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-section.collapsed .settings-section-body {
+  display: none;
 }

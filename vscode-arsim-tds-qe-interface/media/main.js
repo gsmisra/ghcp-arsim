@@ -41,7 +41,20 @@
     // open/closed state has to live here, or it gets silently reset to
     // "expanded" on every re-render. All segments start collapsed for a
     // clean landing view.
-    collapsed: { workflow: true, request: true, response: true, tokenUsage: true },
+    collapsed: {
+      workflow: true,
+      request: true,
+      response: true,
+      tokenUsage: true,
+      // Settings overlay sections. Namespaced with a "settings" prefix so
+      // they can never collide with a main-body card id, even though the
+      // two collapse systems already share one flat `state.collapsed` map.
+      settingsSkills: true,
+      settingsInstructions: true,
+      settingsPrompts: true,
+      settingsConnection: true,
+      settingsAuthor: true,
+    },
     responseExpanded: false,
     promptEditorExpanded: false,
     historyFilters: { workflow: '', model: '', host: '', dateFrom: '', dateTo: '', search: '' },
@@ -132,7 +145,7 @@
     const collapsedClass = state.collapsed.tokenUsage ? ' collapsed' : '';
     el.className = 'token-footer' + collapsedClass;
     el.innerHTML = `
-      <div class="token-footer-row" data-toggle="tokenUsage" id="token-footer-toggle">
+      <div class="token-footer-row" data-toggle="tokenUsage">
         <span class="token-footer-title">${tokenIcon()} Token Usage</span>
         <span class="chevron">${chevronIcon()}</span>
       </div>
@@ -149,10 +162,7 @@
       </div>
     `;
 
-    document.getElementById('token-footer-toggle').addEventListener('click', () => {
-      state.collapsed.tokenUsage = !state.collapsed.tokenUsage;
-      renderTokenFooter();
-    });
+    wireToggles(el, renderTokenFooter);
     document.getElementById('token-reset-btn').addEventListener('click', () => {
       post({ type: 'resetTokenSession' });
     });
@@ -188,6 +198,42 @@
         </div>
         <div class="card-body">${innerHtml}</div>
       </div>`;
+  }
+
+  /**
+   * Lighter-weight collapsible section for use *inside* an already-full-
+   * screen overlay (Settings): same state-driven collapse behavior and
+   * chevron as a main-body `.card`, but without its border/shadow/rounded
+   * corners -- stacking five bordered "cards" inside a settings panel
+   * reads as visually heavier than the flat sectioned list Settings
+   * already uses elsewhere (e.g. Connection, Author Content).
+   */
+  function settingsSectionHtml(id, title, badgeCount, innerHtml) {
+    const collapsedClass = state.collapsed[id] ? ' collapsed' : '';
+    return `
+      <div class="settings-section${collapsedClass}">
+        <div class="settings-section-header" data-toggle="${id}">
+          <h3>${esc(title)} ${badgeCount ? `<span class="badge">${badgeCount}</span>` : ''}</h3>
+          <span class="chevron">${chevronIcon()}</span>
+        </div>
+        <div class="settings-section-body">${innerHtml}</div>
+      </div>`;
+  }
+
+  /** Shared by wireBody() and wireSettings(): flips state.collapsed[id] and
+   *  re-renders via whichever render function owns that container, so the
+   *  collapse mechanism has exactly one implementation regardless of which
+   *  panel a collapsible section lives in. Scoped to `container` (not
+   *  `document`) so wiring one panel never also binds toggles belonging to
+   *  the other if both happen to be present in the DOM at once. */
+  function wireToggles(container, rerender) {
+    container.querySelectorAll('[data-toggle]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-toggle');
+        state.collapsed[id] = !state.collapsed[id];
+        rerender();
+      });
+    });
   }
 
   function chevronIcon() {
@@ -438,13 +484,7 @@
 
   // ---------------- Wiring: main body ----------------
   function wireBody() {
-    document.querySelectorAll('[data-toggle]').forEach((el) => {
-      el.addEventListener('click', () => {
-        const id = el.getAttribute('data-toggle');
-        state.collapsed[id] = !state.collapsed[id];
-        renderBody();
-      });
-    });
+    wireToggles(document.getElementById('body'), renderBody);
 
     const responseExpandBtn = document.getElementById('response-expand-btn');
     if (responseExpandBtn) {
@@ -595,35 +635,34 @@
             <select id="settings-model-select">${modelOptions}</select>
           </div>
         </div>
-        <div class="settings-section">
-          <h3>Skills ${state.selectedSkills.size ? `<span class="badge">${state.selectedSkills.size}</span>` : ''}</h3>
-          ${skillsBodyHtml()}
-        </div>
-        <div class="settings-section">
-          <h3>Instructions ${state.selectedInstructions.size ? `<span class="badge">${state.selectedInstructions.size}</span>` : ''}</h3>
-          ${instructionsBodyHtml()}
-        </div>
-        <div class="settings-section">
-          <h3>Custom Prompts ${state.selectedPromptFile ? '<span class="badge">1</span>' : ''}</h3>
-          ${promptsBodyHtml()}
-        </div>
-        <div class="settings-section">
-          <h3>Connection</h3>
+        ${settingsSectionHtml('settingsSkills', 'Skills', state.selectedSkills.size, skillsBodyHtml())}
+        ${settingsSectionHtml('settingsInstructions', 'Instructions', state.selectedInstructions.size, instructionsBodyHtml())}
+        ${settingsSectionHtml('settingsPrompts', 'Custom Prompts', state.selectedPromptFile ? 1 : 0, promptsBodyHtml())}
+        ${settingsSectionHtml(
+          'settingsConnection',
+          'Connection',
+          0,
+          `
           <div class="btn-row">
             <button class="btn" id="test-conn-btn" ${state.testConnBusy ? 'disabled' : ''}>${state.testConnBusy ? 'Testing…' : 'Test Connection'}</button>
           </div>
           <div class="hint">Sends the text "Who are you ?" to the model selected above and shows its reply below.</div>
           <div class="response-panel ${state.testConnResult ? '' : 'empty'}" data-placeholder="No test run yet.">${state.testConnResult ? esc(state.testConnResult) : ''}</div>
           ${state.testConnUsage ? `<div class="context-summary">Tokens — sent: ${fmtTok(state.testConnUsage.promptTokens)} · received: ${fmtTok(state.testConnUsage.completionTokens)} · total: ${fmtTok(state.testConnUsage.totalTokens)}</div>` : ''}
-        </div>
-        <div class="settings-section">
-          <h3>Author Content</h3>
+          `
+        )}
+        ${settingsSectionHtml(
+          'settingsAuthor',
+          'Author Content',
+          0,
+          `
           <div class="btn-row" style="flex-direction:column; align-items:stretch;">
             <button class="btn secondary block" data-wizard="skill">Add New Skill</button>
             <button class="btn secondary block" data-wizard="instruction">Add New Instruction</button>
             <button class="btn secondary block" data-wizard="prompt">Add New Prompt</button>
           </div>
-        </div>
+          `
+        )}
       </div>
     `;
 
@@ -635,6 +674,8 @@
       state.settingsOpen = false;
       renderSettings();
     });
+
+    wireToggles(overlay, renderSettings);
 
     document.getElementById('settings-model-select').addEventListener('change', (e) => {
       state.modelUid = e.target.value;

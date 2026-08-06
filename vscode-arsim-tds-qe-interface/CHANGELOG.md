@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.7.2
+
+- **Settings sections are now collapsible, collapsed by default**: Skills,
+  Instructions, Custom Prompts, Connection, and Author Content each get
+  their own chevron toggle, matching the main UI's segment pattern.
+  Copilot Model stays always-visible (a single dropdown, not requested to
+  collapse). Implementation note: the toggle behavior itself was already
+  built for the main-body cards and the Token Usage footer -- rather than
+  writing a third copy of the same click-handler logic, it's now one
+  shared `wireToggles(container, rerender)` helper used by all three
+  (main body, Settings, Token Usage), and a new `settingsSectionHtml()`
+  mirrors `cardHtml()`'s collapse behavior with a lighter-weight header
+  style suited to being nested inside an already-full-screen panel rather
+  than stacking five bordered/shadowed cards.
+
+## 0.7.1
+
+- **Your Request and Response now share one font, one size, one line-height**
+  (previously the response panel used a monospace editor font at 13.5px
+  while the request textarea used the UI sans-serif font at a different
+  size). Both now render at 16px with 1.65 line-height for easier reading.
+- **Applied an Apple-style look throughout**: a `-apple-system,
+  BlinkMacSystemFont, ...` font stack (resolves to San Francisco on
+  macOS/iOS, falls back to Segoe UI Variable/Segoe UI elsewhere -- SF
+  itself isn't licensable for web embedding, so this is the standard way
+  sites match Apple's type feel cross-platform), tighter negative
+  letter-spacing on headings, larger rounded corners on cards/buttons/
+  inputs, subtle card shadows for depth, and smooth hover/press
+  transitions on buttons.
+
 ## 0.7.0
 
 - **Main UI simplified to four segments**: Workflow, Your Request, Response,
