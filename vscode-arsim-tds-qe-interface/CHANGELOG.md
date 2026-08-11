@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0
+
+- **PROD Incident Analysis is now a real ServiceNow-backed workflow**, not a paste-your-own-text workflow. Selecting it in Settings shows a MAL Codes field (comma-separated, auto-trimmed) and From/To date pickers right in the Chat compose area; "Fetch Incidents" queries ServiceNow's `incident` table (`cmdb_ci.u_application_code` IN the given codes, `sys_created_on` within the given range) and loads the results into the chat's context automatically -- the same way an attached file would, so you can keep asking follow-up questions against it without re-fetching.
+- **Credential handling**: the ServiceNow username is a normal setting (`arsimTdsQe.serviceNowUsername`); the password is never written to any file (not a setting, not tsconfig.json) -- it's requested once via a native masked VS Code prompt and held in VS Code's encrypted SecretStorage. Use "ARSIM TDS QE: Forget ServiceNow Password" from the Command Palette to clear it (e.g. after a rotation).
+- **Auto-loaded persona, Skill, and Instruction**: entering this workflow automatically selects a "senior production support engineer at a multinational bank" Custom Prompt, plus a Skill and Instruction encoding the incident root-cause taxonomy (OE/non-prod testing miss vs. technical/config issue vs. functional defect) and output rules -- all reachable and fully editable via "Select Custom Prompt" / "Select Skill" / "Select Instruction". Switching to a different workflow cleanly removes exactly these auto-added selections (never anything you picked yourself).
+- **Skills and Instructions are now viewable and editable**, not just checkbox-toggleable -- click any skill/instruction's name in Settings to open the same inline editor Custom Prompts already had, with Expand/Collapse and Save.
+- **"Control the data sent in the context"** now shows a scrollable, checkbox-selectable table of fetched incidents (ticket number, short description, severity) when the attached data came from ServiceNow, instead of the generic CSV column/row-range controls -- pick specific tickets once the full set no longer fits the Context Limit meter.
+- **Chat responses get a real table** when the model answers a multi-incident question (its output contract requires one): rendered inline with severity-colour-coded badges (red/amber/yellow/green), plus a "Download as CSV" link. A row of suggested quick-reply questions ("Which of these are OE/non-prod testing misses?", etc.) appears under the response so you can tap instead of typing.
+- **"🔎 New incident search"** clears the previously fetched incidents and search fields for a fresh MAL-code/date query, while leaving the auto-selected Custom Prompt/Skill/Instruction in place.
+- **Switching workflows now resets the main view**: a fresh chat thread and no leftover attached file/incident search, so stale context from one workflow never bleeds into the next.
+- **Compact Messenger-style send button**: "Send to Copilot" is now a small circular arrow button beside the textarea instead of a full-width button below everything.
+- **The Chat segment now fills the full height** of the sidebar (down to the Token Usage footer) instead of sizing to its content.
+
 ## 0.9.2
 
 - **Workflow moved into Settings.** The main view now shows only the Chat

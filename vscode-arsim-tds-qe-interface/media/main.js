@@ -66,6 +66,19 @@
     controlPanelOpen: false,
     fileSelectionDraft: {}, // working copy of FileSelection edited in the Control panel, applied on "Apply Selection"
     contextMeter: null, // { usedTokens, maxTokens, exceeded, lastLineIncluded }
+    // ---- PROD Incident Analysis (ServiceNow) ----
+    incidentSearch: { malCodes: '', dateFrom: '', dateTo: '', busy: false, summary: null }, // summary: { count, query } once fetched
+    // Tracks exactly which Skill/Instruction/Prompt the *active workflow*
+    // auto-selected (see applyWorkflowSwitch), so switching workflows can
+    // cleanly remove only those on the way out -- never a selection the
+    // user picked manually themselves.
+    autoSelection: { skill: null, instruction: null, prompt: null },
+    // The single inline content viewer/editor shared by Skills and
+    // Instructions (Custom Prompts keep their own dedicated
+    // selectedPromptFile/promptFileContent/promptFileDirty state below,
+    // since selecting a prompt already doubles as opening it for editing).
+    // Shape: { kind: 'skill'|'instruction', file, content, dirty, expanded }
+    managedFileEditor: null,
   };
 
   let contextEstimateTimer = null;
@@ -384,6 +397,10 @@
     return fileChecklistHtml(state.instructions, state.selectedInstructions, 'instruction', 'No instruction files found in .github/instructions/.');
   }
 
+  /** Skills/Instructions: a checkbox (context inclusion) plus a clickable
+   *  name (opens the shared inline viewer/editor below the list -- see
+   *  managedFileEditorHtml) for each file. Checking a box and opening a
+   *  file to view/edit it are independent actions. */
   function fileChecklistHtml(files, selectedSet, kind, emptyText) {
     if (!files.length) {
       return `<div class="empty-hint">${esc(emptyText)}</div>`;
@@ -393,11 +410,43 @@
         (f) => `
         <label class="check-row">
           <input type="checkbox" data-kind="${kind}" data-path="${esc(f.relativePath)}" ${selectedSet.has(f.relativePath) ? 'checked' : ''} />
-          <span title="${esc(f.relativePath)}">${esc(f.fileName)}</span>
+          <button type="button" class="check-row-name" data-open-kind="${kind}" data-open-path="${esc(f.relativePath)}" title="View / edit ${esc(f.relativePath)}">${esc(f.fileName)}</button>
         </label>`
       )
       .join('');
-    return `<div class="checklist">${rows}</div>`;
+    return `<div class="checklist">${rows}</div>${managedFileEditorHtml(kind)}`;
+  }
+
+  /** Inline content viewer/editor shared by Skills and Instructions,
+   *  generalized from the Custom Prompts editor below (same textarea +
+   *  Expand/Collapse + Save shape) so clicking any skill or instruction
+   *  name -- including the ones a workflow auto-selects, per PROD Incident
+   *  Analysis -- lets the user actually read and edit it, not just toggle
+   *  a checkbox. */
+  function managedFileEditorHtml(kind) {
+    const ed = state.managedFileEditor;
+    if (!ed || ed.kind !== kind) return '';
+    return `
+      <div class="field">
+        <div class="field-label-row">
+          <label class="field-label">${esc(ed.file.fileName)} ${ed.dirty ? '(unsaved changes)' : ''}</label>
+          <button class="link-btn" id="managed-file-expand-btn">${ed.expanded ? 'Collapse ↑' : 'Expand ↓'}</button>
+        </div>
+        <textarea id="managed-file-editor" class="${ed.expanded ? 'expanded' : ''}" style="min-height:120px;">${esc(ed.content)}</textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="managed-file-save-btn">Save</button>
+        <button class="link-btn" id="managed-file-close-btn">Close</button>
+      </div>`;
+  }
+
+  function openManagedFileEditor(kind, relativePath) {
+    const list = kind === 'skill' ? state.skills : state.instructions;
+    const file = list.find((f) => f.relativePath === relativePath);
+    if (!file) return;
+    state.managedFileEditor = { kind, file, content: '', dirty: false, expanded: false };
+    renderSettings();
+    post({ type: 'loadManagedFile', kind, file });
   }
 
   function promptsBodyHtml() {
@@ -449,17 +498,61 @@
         <span class="hint">${hasEntries ? `${state.chatEntries.length} exchange${state.chatEntries.length === 1 ? '' : 's'} this session` : 'No messages yet'}</span>
         <button class="icon-btn small" id="copy-response-btn" title="Copy full conversation" aria-label="Copy conversation" ${hasEntries ? '' : 'disabled'}>${copyIcon()}</button>
       </div>
-      <div class="${threadClasses}" id="chat-thread">${chatThreadHtml()}</div>
+      <div class="${threadClasses}" id="chat-thread">${chatThreadHtml()}${suggestedChipsHtml()}</div>
       <div class="field compose-field">
         ${workflowModelStatusHtml()}
-        <textarea id="user-text" placeholder="${esc(placeholderForWorkflow())}" style="min-height:80px;">${esc(state.userText)}</textarea>
+        <div class="compose-input-row">
+          <textarea id="user-text" placeholder="${esc(placeholderForWorkflow())}" style="min-height:80px;">${esc(state.userText)}</textarea>
+          <button class="icon-btn send-icon-btn" id="send-btn" title="Send" aria-label="Send to Copilot" ${state.streaming ? 'disabled' : ''}>${state.streaming ? spinnerIcon() : sendIcon()}</button>
+        </div>
         <div class="hint">Press Enter to send · Shift+Enter for a new line</div>
-        ${attachedFileRowHtml()}
+        ${isIncidentWorkflow() ? incidentSearchPanelHtml() : attachedFileRowHtml()}
       </div>
       <div id="context-meter-container">${contextMeterHtml()}</div>
-      <div class="btn-row">
-        <button class="btn block" id="send-btn" ${state.streaming ? 'disabled' : ''}>${state.streaming ? 'Sending…' : 'Send to Copilot'}</button>
+    `;
+  }
+
+  function sendIcon() {
+    return `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" stroke="none"><path d="M2.5 13.5l11-5.5-11-5.5v4.3l6.5 1.2-6.5 1.2v4.3z"/></svg>`;
+  }
+
+  function spinnerIcon() {
+    return `<svg class="spinner" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 1.5a6.5 6.5 0 1 0 6.5 6.5" /></svg>`;
+  }
+
+  /**
+   * PROD Incident Analysis's own compose-area panel, shown in place of the
+   * generic Browse row (one attachment slot, one workflow-appropriate
+   * input surface -- fetched incidents occupy the same slot a real
+   * uploaded file would). MAL codes + date range are the parameterized
+   * pieces of the fixed ServiceNow query; "Review / select tickets" and
+   * "New incident search" only appear once a fetch has completed.
+   */
+  function incidentSearchPanelHtml() {
+    const s = state.incidentSearch;
+    const hasResult = !!s.summary;
+    return `
+      <div class="field">
+        <label class="field-label">MAL Codes (comma-separated)</label>
+        <input type="text" id="incident-mal-codes" value="${esc(s.malCodes)}" placeholder="e.g. INNPE, DDR" ${s.busy ? 'disabled' : ''} />
       </div>
+      <div class="range-row">
+        <div class="field">
+          <label class="field-label">From date</label>
+          <input type="date" id="incident-date-from" value="${esc(s.dateFrom)}" ${s.busy ? 'disabled' : ''} />
+        </div>
+        <div class="field">
+          <label class="field-label">To date</label>
+          <input type="date" id="incident-date-to" value="${esc(s.dateTo)}" ${s.busy ? 'disabled' : ''} />
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn secondary" id="fetch-incidents-btn" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Fetching…' : 'Fetch Incidents'}</button>
+        ${hasResult ? `<button class="link-btn" id="incident-control-link">Review / select tickets</button>` : ''}
+        ${hasResult ? `<button class="link-btn" id="incident-new-search-btn">🔎 New incident search</button>` : ''}
+        ${contextPickerLinksHtml()}
+      </div>
+      ${hasResult ? `<div class="hint">${s.summary.count} incident${s.summary.count === 1 ? '' : 's'} found for this MAL code / date range.</div>` : ''}
     `;
   }
 
@@ -517,10 +610,19 @@
       // stream that dies mid-response should never make the tokens already
       // received disappear. If it did fail, say so *alongside* the partial
       // text rather than instead of it.
+      // The markdown table (and its CSV download) is only parsed out once
+      // the response has fully finished streaming -- while chunks are
+      // still arriving, this function isn't even re-run per token (see
+      // 'streamChunk'), so there's nothing to parse yet anyway.
+      const table = !entry.streaming ? parseMarkdownTable(entry.responseText) : null;
+      const tableBlock = table
+        ? `${tableToHtml(table)}<div class="btn-row"><button class="link-btn" data-download-csv="${esc(entry.id)}">⬇ Download as CSV</button></div>`
+        : '';
       responseBlock = `
         <div class="chat-message incoming">
           <div class="chat-timestamp">${esc(formatChatTimestamp(entry.timestamp))} · ${esc(entry.workflowLabel)}</div>
           <div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${esc(entry.responseText)}</div>
+          ${tableBlock}
           ${entry.error ? `<div class="chat-error-note">⚠ Interrupted: ${esc(entry.error)}</div>` : ''}
           ${entry.contextSummary ? contextSummaryHtml(entry.contextSummary) : ''}
         </div>`;
@@ -595,6 +697,91 @@
       </div>`;
   }
 
+  /** Classifies a Severity/Priority cell's text into the four display
+   *  levels used everywhere in this workflow (ticket-selection table,
+   *  chat response tables): Critical/Sev1 -> red, High/Sev2 -> amber,
+   *  Medium/Sev3 -> yellow, Low/Sev4/Minor -> green. Keyword-first so an
+   *  unrelated digit elsewhere in a longer cell can't false-positive. */
+  function severityClass(text) {
+    const t = String(text || '').trim().toLowerCase();
+    if (/critical|sev\s*-?\s*1\b|^1\b|\bp1\b/.test(t)) return 'sev-red';
+    if (/\bhigh\b|sev\s*-?\s*2\b|^2\b|\bp2\b/.test(t)) return 'sev-amber';
+    if (/medium|moderate|sev\s*-?\s*3\b|^3\b|\bp3\b/.test(t)) return 'sev-yellow';
+    if (/\blow\b|minor|sev\s*-?\s*4\b|^4\b|\bp4\b/.test(t)) return 'sev-green';
+    return 'sev-neutral';
+  }
+
+  /** Narrow markdown-table detector/parser (not a full markdown renderer):
+   *  finds the first "| header |" line followed by a "|---|---|" separator
+   *  line, then consumes consecutive "| cell |" rows. Good enough for the
+   *  LLM's own output contract (PROD Incident Analysis's system prompt
+   *  requires this exact shape for multi-incident answers) without pulling
+   *  in a markdown library for one narrow use. */
+  function splitTableRow(line) {
+    return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  }
+
+  function parseMarkdownTable(text) {
+    if (!text) return null;
+    const lines = text.split('\n');
+    const sepPattern = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/;
+    for (let i = 0; i < lines.length - 1; i++) {
+      const headerLine = lines[i].trim();
+      const sepLine = lines[i + 1].trim();
+      if (!/^\|.*\|$/.test(headerLine) || !sepPattern.test(sepLine)) continue;
+
+      const headers = splitTableRow(headerLine);
+      const rows = [];
+      let j = i + 2;
+      while (j < lines.length && /^\|.*\|$/.test(lines[j].trim())) {
+        rows.push(splitTableRow(lines[j]));
+        j++;
+      }
+      if (rows.length === 0) continue;
+      return { headers, rows };
+    }
+    return null;
+  }
+
+  function tableToHtml(table) {
+    const sevIdx = table.headers.findIndex((h) => /severity|priority/i.test(h));
+    const headHtml = table.headers.map((h) => `<th>${esc(h)}</th>`).join('');
+    const bodyHtml = table.rows
+      .map((row) => {
+        const cellsHtml = row
+          .map((cell, idx) =>
+            idx === sevIdx && cell
+              ? `<td><span class="severity-badge ${severityClass(cell)}">${esc(cell)}</span></td>`
+              : `<td>${esc(cell)}</td>`
+          )
+          .join('');
+        return `<tr>${cellsHtml}</tr>`;
+      })
+      .join('');
+    return `<div class="history-table-wrap chat-inline"><table class="history-table"><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+  }
+
+  const INCIDENT_SUGGESTED_QUESTIONS = [
+    'Which of these incidents are due to OE teams (a testing miss in lower environments / Non-Prod)?',
+    'Which incidents are due to a technical or configuration issue rather than a functional defect?',
+    'Summarize any recurring root-cause patterns across these incidents.',
+    'Show only the Sev1/Sev2 (Critical/High) incidents from this set.',
+  ];
+
+  /** Curated quick-reply pills (item: "recommend the user ask these
+   *  questions"), shown under the latest response once it has finished
+   *  streaming and an incident set is loaded -- clicking one sends it
+   *  immediately, same as tapping a suggested reply in a messaging app. */
+  function suggestedChipsHtml() {
+    if (!isIncidentWorkflow() || !state.attachedFile) return '';
+    const last = state.chatEntries[state.chatEntries.length - 1];
+    if (!last || last.streaming || !last.responseText) return '';
+    const chips = INCIDENT_SUGGESTED_QUESTIONS.map(
+      (q, i) => `<button class="suggestion-chip" data-suggested-question="${i}">${esc(q)}</button>`
+    ).join('');
+    return `<div class="suggestion-chips">${chips}</div>`;
+  }
+
   function truncateForDisplay(line) {
     const s = String(line || '').trim();
     return s.length > 160 ? s.slice(0, 160) + '…' : s || '(blank line)';
@@ -623,6 +810,82 @@
   function placeholderForWorkflow() {
     const w = state.workflows.find((x) => x.id === state.workflowId);
     return w ? w.inputPlaceholder : 'Describe your request...';
+  }
+
+  function isIncidentWorkflow() {
+    const w = state.workflows.find((x) => x.id === state.workflowId);
+    return !!w && w.dataSource === 'servicenow-incidents';
+  }
+
+  /** Adds the active workflow's auto-Skill/Instruction/Prompt (if any and
+   *  not already selected) and records what was auto-added in
+   *  state.autoSelection, so a later workflow switch can remove exactly
+   *  that -- never a selection the user made themselves. Called both right
+   *  after a workflow switch and whenever the file lists arrive (covers
+   *  the extension's initial default workflow already being this one). */
+  function ensureAutoSelectionForCurrentWorkflow() {
+    const workflow = state.workflows.find((w) => w.id === state.workflowId);
+    if (!workflow) return;
+
+    if (workflow.autoSkillPath && !state.autoSelection.skill) {
+      const skill = state.skills.find((s) => s.relativePath === workflow.autoSkillPath);
+      if (skill) {
+        state.selectedSkills.add(skill.relativePath);
+        state.autoSelection.skill = skill.relativePath;
+      }
+    }
+    if (workflow.autoInstructionPath && !state.autoSelection.instruction) {
+      const instruction = state.instructions.find((i) => i.relativePath === workflow.autoInstructionPath);
+      if (instruction) {
+        state.selectedInstructions.add(instruction.relativePath);
+        state.autoSelection.instruction = instruction.relativePath;
+      }
+    }
+    if (workflow.autoPromptPath && !state.autoSelection.prompt && !state.selectedPromptFile) {
+      const prompt = state.prompts.find((p) => p.relativePath === workflow.autoPromptPath);
+      if (prompt) {
+        state.selectedPromptFile = prompt;
+        state.promptFileDirty = false;
+        state.autoSelection.prompt = prompt.relativePath;
+        post({ type: 'loadPrompt', file: prompt });
+      }
+    }
+  }
+
+  /**
+   * Switching workflows resets the main view to a clean start: a fresh
+   * chat thread, no leftover attached file/incident search, and the
+   * *previous* workflow's own auto-selected Skill/Instruction/Prompt
+   * removed (the user's own manual picks are left untouched -- only
+   * exactly what state.autoSelection recorded as auto-added goes away).
+   * The new workflow's own auto-selection is then applied.
+   */
+  function applyWorkflowSwitch(newWorkflowId) {
+    if (state.autoSelection.skill) {
+      state.selectedSkills.delete(state.autoSelection.skill);
+      state.autoSelection.skill = null;
+    }
+    if (state.autoSelection.instruction) {
+      state.selectedInstructions.delete(state.autoSelection.instruction);
+      state.autoSelection.instruction = null;
+    }
+    if (state.autoSelection.prompt && state.selectedPromptFile && state.selectedPromptFile.relativePath === state.autoSelection.prompt) {
+      state.selectedPromptFile = null;
+      state.promptFileContent = '';
+      state.promptFileDirty = false;
+      state.autoSelection.prompt = null;
+    }
+
+    state.workflowId = newWorkflowId;
+    state.chatEntries = [];
+    state.userText = '';
+    if (state.attachedFile) post({ type: 'clearAttachedFile', fileId: state.attachedFile.meta.fileId });
+    state.attachedFile = null;
+    state.contextMeter = null;
+    state.fileSelectionDraft = {};
+    state.incidentSearch = { malCodes: '', dateFrom: '', dateTo: '', busy: false, summary: null };
+
+    ensureAutoSelectionForCurrentWorkflow();
   }
 
   // ---------------- Wiring: main body ----------------
@@ -692,6 +955,82 @@
     if (sendBtn) {
       sendBtn.addEventListener('click', onSend);
     }
+
+    wireIncidentSearchPanel();
+
+    document.querySelectorAll('[data-suggested-question]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-suggested-question'), 10);
+        state.userText = INCIDENT_SUGGESTED_QUESTIONS[idx];
+        onSend();
+      });
+    });
+
+    document.querySelectorAll('[data-download-csv]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const entry = state.chatEntries.find((e) => e.id === btn.getAttribute('data-download-csv'));
+        const table = entry && parseMarkdownTable(entry.responseText);
+        if (!table) return;
+        post({ type: 'downloadIncidentAnalysisCsv', headers: table.headers, rows: table.rows });
+      });
+    });
+  }
+
+  function wireIncidentSearchPanel() {
+    const malCodesInput = document.getElementById('incident-mal-codes');
+    if (malCodesInput) {
+      malCodesInput.addEventListener('input', (e) => {
+        state.incidentSearch.malCodes = e.target.value;
+      });
+    }
+    const dateFromInput = document.getElementById('incident-date-from');
+    if (dateFromInput) {
+      dateFromInput.addEventListener('change', (e) => {
+        state.incidentSearch.dateFrom = e.target.value;
+      });
+    }
+    const dateToInput = document.getElementById('incident-date-to');
+    if (dateToInput) {
+      dateToInput.addEventListener('change', (e) => {
+        state.incidentSearch.dateTo = e.target.value;
+      });
+    }
+
+    const fetchBtn = document.getElementById('fetch-incidents-btn');
+    if (fetchBtn) fetchBtn.addEventListener('click', onFetchIncidents);
+
+    const controlLink = document.getElementById('incident-control-link');
+    if (controlLink) controlLink.addEventListener('click', openControlPanel);
+
+    const newSearchBtn = document.getElementById('incident-new-search-btn');
+    if (newSearchBtn) newSearchBtn.addEventListener('click', onNewIncidentSearch);
+  }
+
+  function onFetchIncidents() {
+    const s = state.incidentSearch;
+    const codes = s.malCodes.split(',').map((c) => c.trim()).filter(Boolean);
+    if (codes.length === 0) {
+      toast('warn', 'Enter at least one MAL code.');
+      return;
+    }
+    if (!s.dateFrom || !s.dateTo) {
+      toast('warn', 'Select both a from date and a to date.');
+      return;
+    }
+    post({ type: 'fetchIncidents', malCodes: codes, dateFrom: s.dateFrom, dateTo: s.dateTo });
+  }
+
+  /** "Start a new incident search" (item: retain the auto-selected Custom
+   *  Prompt/Skill/Instruction, drop only the previously fetched incident
+   *  data) -- clears the attached incident set and search fields, leaves
+   *  every Skills/Instructions/Custom Prompt selection exactly as-is. */
+  function onNewIncidentSearch() {
+    if (state.attachedFile) post({ type: 'clearAttachedFile', fileId: state.attachedFile.meta.fileId });
+    state.attachedFile = null;
+    state.contextMeter = null;
+    state.fileSelectionDraft = {};
+    state.incidentSearch = { malCodes: '', dateFrom: '', dateTo: '', busy: false, summary: null };
+    renderBody();
   }
 
   /** Wires the "Control the data sent in the context" link(s) within the
@@ -868,9 +1207,9 @@
     const workflowSelect = document.getElementById('workflow-select');
     if (workflowSelect) {
       workflowSelect.addEventListener('change', (e) => {
-        state.workflowId = e.target.value;
+        applyWorkflowSwitch(e.target.value);
         renderSettings();
-        renderBody(); // refreshes the Workflow/Model status line + placeholder text on the Chat view
+        renderBody();
         scheduleContextEstimate();
       });
     }
@@ -906,6 +1245,42 @@
         scheduleContextEstimate();
       });
     });
+
+    overlay.querySelectorAll('[data-open-kind]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openManagedFileEditor(btn.getAttribute('data-open-kind'), btn.getAttribute('data-open-path'));
+      });
+    });
+
+    const managedEditor = document.getElementById('managed-file-editor');
+    if (managedEditor) {
+      managedEditor.addEventListener('input', (e) => {
+        state.managedFileEditor.content = e.target.value;
+        state.managedFileEditor.dirty = true;
+      });
+    }
+    const managedExpandBtn = document.getElementById('managed-file-expand-btn');
+    if (managedExpandBtn) {
+      managedExpandBtn.addEventListener('click', () => {
+        state.managedFileEditor.expanded = !state.managedFileEditor.expanded;
+        renderSettings();
+      });
+    }
+    const managedSaveBtn = document.getElementById('managed-file-save-btn');
+    if (managedSaveBtn) {
+      managedSaveBtn.addEventListener('click', () => {
+        const ed = state.managedFileEditor;
+        post({ type: 'saveManagedFile', kind: ed.kind, file: ed.file, fileName: ed.file.fileName, content: ed.content });
+        ed.dirty = false;
+      });
+    }
+    const managedCloseBtn = document.getElementById('managed-file-close-btn');
+    if (managedCloseBtn) {
+      managedCloseBtn.addEventListener('click', () => {
+        state.managedFileEditor = null;
+        renderSettings();
+      });
+    }
 
     const promptSelect = document.getElementById('prompt-select');
     if (promptSelect) {
@@ -1121,6 +1496,36 @@
           <div class="field"><label class="field-label">From page (approx.)</label><input type="number" min="1" max="${meta.pageCount}" id="cp-page-from" value="${draft.pageFrom || ''}" placeholder="1" /></div>
           <div class="field"><label class="field-label">To page (approx.)</label><input type="number" min="1" max="${meta.pageCount}" id="cp-page-to" value="${draft.pageTo || ''}" placeholder="${meta.pageCount}" /></div>
         </div>`;
+    } else if (meta.kind === 'csv' && meta.sourceKind === 'servicenow-incidents') {
+      const incidents = meta.incidentSummary || [];
+      const selected = new Set(
+        draft.selectedIncidentNumbers && draft.selectedIncidentNumbers.length
+          ? draft.selectedIncidentNumbers
+          : incidents.map((row) => row.number) // nothing unchecked yet -- default to everything selected
+      );
+      noteHtml = `<div class="hint">${incidents.length} incident${incidents.length === 1 ? '' : 's'} fetched. Select which to include in the LLM's context, then Apply Selection -- useful once the full set no longer fits the Context Limit below.</div>`;
+      const rows = incidents
+        .map(
+          (row) => `
+        <tr>
+          <td><input type="checkbox" class="cp-incident-toggle" data-number="${esc(row.number)}" ${selected.has(row.number) ? 'checked' : ''} /></td>
+          <td>${esc(row.number)}</td>
+          <td>${esc(row.shortDescription)}</td>
+          <td><span class="severity-badge ${severityClass(row.severity)}">${esc(row.severity || '—')}</span></td>
+        </tr>`
+        )
+        .join('');
+      fieldsHtml = `
+        <div class="btn-row">
+          <button class="link-btn" id="cp-incident-select-all">Select all</button>
+          <button class="link-btn" id="cp-incident-select-none">Select none</button>
+        </div>
+        <div class="history-table-wrap">
+          <table class="history-table">
+            <thead><tr><th></th><th>Incident</th><th>Short Description</th><th>Severity</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="4" class="empty-hint">No incidents in this result set.</td></tr>`}</tbody>
+          </table>
+        </div>`;
     } else if (meta.kind === 'csv') {
       noteHtml = `<div class="hint">Detected columns: ${meta.csvColumns.map(esc).join(', ')}</div>`;
       fieldsHtml = `
@@ -1170,7 +1575,7 @@
         <button class="icon-btn" id="cp-close" aria-label="Close">${closeIcon()}</button>
       </div>
       <div class="overlay-body">
-        <div class="hint">File: ${esc(meta.fileName)} (detected as ${esc(meta.kind.toUpperCase())})</div>
+        <div class="hint">${meta.sourceKind === 'servicenow-incidents' ? esc(meta.fileName) : `File: ${esc(meta.fileName)} (detected as ${esc(meta.kind.toUpperCase())})`}</div>
         ${noteHtml}
         ${fieldsHtml}
         <div class="btn-row">
@@ -1203,6 +1608,15 @@
         });
       });
     }
+
+    if (meta.kind === 'csv' && meta.sourceKind === 'servicenow-incidents') {
+      document.getElementById('cp-incident-select-all')?.addEventListener('click', () => {
+        overlay.querySelectorAll('.cp-incident-toggle').forEach((el) => { el.checked = true; });
+      });
+      document.getElementById('cp-incident-select-none')?.addEventListener('click', () => {
+        overlay.querySelectorAll('.cp-incident-toggle').forEach((el) => { el.checked = false; });
+      });
+    }
   }
 
   function applyControlPanelSelection(meta) {
@@ -1216,6 +1630,11 @@
     if (meta.kind === 'pdf' || meta.kind === 'docx') {
       draft.pageFrom = num('cp-page-from');
       draft.pageTo = num('cp-page-to');
+    } else if (meta.kind === 'csv' && meta.sourceKind === 'servicenow-incidents') {
+      const overlay = document.getElementById('control-overlay');
+      draft.selectedIncidentNumbers = Array.from(overlay.querySelectorAll('.cp-incident-toggle:checked')).map((el) =>
+        el.getAttribute('data-number')
+      );
     } else if (meta.kind === 'csv') {
       const colsInput = document.getElementById('cp-csv-columns');
       draft.csvColumns = colsInput && colsInput.value.trim()
@@ -1512,6 +1931,11 @@
         state.skills = msg.skills;
         state.instructions = msg.instructions;
         state.prompts = msg.prompts;
+        // Covers the case where the extension's *default* workflow is
+        // already PROD Incident Analysis on first load -- 'init' sets
+        // state.workflowId before this message (which carries the actual
+        // Skill/Instruction/Prompt file lists) has arrived.
+        ensureAutoSelectionForCurrentWorkflow();
         // Skills/Instructions/Custom Prompts now live in Settings only.
         if (state.settingsOpen) renderSettings();
         break;
@@ -1522,6 +1946,35 @@
           state.promptFileDirty = false;
           if (state.settingsOpen) renderSettings();
         }
+        break;
+
+      case 'managedFileContent':
+        if (
+          state.managedFileEditor &&
+          state.managedFileEditor.kind === msg.kind &&
+          state.managedFileEditor.file.relativePath === msg.file.relativePath
+        ) {
+          state.managedFileEditor.content = msg.content;
+          state.managedFileEditor.dirty = false;
+          if (state.settingsOpen) renderSettings();
+        }
+        break;
+
+      case 'incidentSearchBusy':
+        state.incidentSearch.busy = true;
+        renderBody();
+        break;
+
+      case 'incidentSearchResult':
+        state.incidentSearch.busy = false;
+        state.incidentSearch.summary = { count: msg.count, query: msg.query };
+        renderBody();
+        break;
+
+      case 'incidentSearchError':
+        state.incidentSearch.busy = false;
+        renderBody();
+        toast('error', msg.message);
         break;
 
       case 'streamStart':

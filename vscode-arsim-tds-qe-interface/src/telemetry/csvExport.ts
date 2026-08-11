@@ -53,3 +53,33 @@ export async function exportTokenHistoryToDownloads(entries: TokenHistoryEntry[]
   await vscode.workspace.fs.writeFile(fileUri, Buffer.from(csv, 'utf-8'));
   return fileUri;
 }
+
+/**
+ * Generic header+rows -> CSV -> Downloads-folder writer, factored out of
+ * `exportTokenHistoryToDownloads` above so the PROD Incident Analysis
+ * chat's "Download as CSV" (on an LLM-produced markdown table parsed
+ * client-side) can reuse the exact same file-writing behavior instead of a
+ * second implementation.
+ */
+export async function exportRowsToDownloads(
+  headers: string[],
+  rows: string[][],
+  fileNameHint: string
+): Promise<vscode.Uri> {
+  const lines = [headers.map(csvEscape).join(',')];
+  for (const row of rows) {
+    lines.push(row.map(csvEscape).join(','));
+  }
+  const csv = lines.join('\r\n') + '\r\n';
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const safeHint = fileNameHint.replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '') || 'export';
+  const fileName = `${safeHint}-${stamp}.csv`;
+
+  const downloadsUri = vscode.Uri.file(path.join(os.homedir(), 'Downloads'));
+  await vscode.workspace.fs.createDirectory(downloadsUri);
+
+  const fileUri = vscode.Uri.joinPath(downloadsUri, fileName);
+  await vscode.workspace.fs.writeFile(fileUri, Buffer.from(csv, 'utf-8'));
+  return fileUri;
+}

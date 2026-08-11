@@ -63,6 +63,16 @@ export function sliceParsedFile(parsed: ParsedFile, selection: FileSelection): s
 
     case 'csv': {
       const columns = selection.csvColumns && selection.csvColumns.length > 0 ? selection.csvColumns : parsed.columns;
+      // ServiceNow-sourced incident sets (see serviceNow/serviceNowIngest.ts,
+      // which produces this exact column name) use per-ticket checkbox
+      // selection instead of a row range -- a contiguous range makes no
+      // sense once a user has picked specific, possibly non-adjacent
+      // incidents out of the Control panel's table.
+      if (selection.selectedIncidentNumbers && selection.selectedIncidentNumbers.length > 0) {
+        const wanted = new Set(selection.selectedIncidentNumbers);
+        const rows = parsed.rows.filter((r) => wanted.has(r['Incident Number']));
+        return rowsToDelimitedText(columns, rows);
+      }
       const [from, to] = clampRange(selection.csvRowFrom, selection.csvRowTo, parsed.rows.length);
       return rowsToDelimitedText(columns, parsed.rows.slice(from - 1, to));
     }

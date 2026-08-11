@@ -22,6 +22,18 @@ export interface WorkflowDefinition {
   systemPrompt: string;
   /** Short placeholder shown in the prompt textarea for this workflow. */
   inputPlaceholder: string;
+  /**
+   * Marks a workflow that pulls its own external data (currently only the
+   * ServiceNow-backed PROD Incident Analysis workflow) so the webview can
+   * key its UI off workflow metadata instead of hardcoding workflow ids.
+   */
+  dataSource?: 'servicenow-incidents';
+  /** Workspace-relative .github/... paths auto-selected the moment this
+   *  workflow becomes active (and cleanly removed -- not the user's own
+   *  picks -- when the user switches away). */
+  autoSkillPath?: string;
+  autoInstructionPath?: string;
+  autoPromptPath?: string;
 }
 
 export interface ModelInfo {
@@ -31,6 +43,28 @@ export interface ModelInfo {
   name: string;
   vendor: string;
   family: string;
+}
+
+/**
+ * A single ServiceNow `incident` table row, narrowed to the fields this
+ * workflow actually uses. Fetched with `sysparm_display_value=true`, so
+ * reference/choice fields (severity, priority, state, cmdb_ci,
+ * assignment_group) always arrive as plain display strings, never
+ * ServiceNow's raw sys_id/value objects.
+ */
+export interface ServiceNowIncident {
+  sys_id: string;
+  number: string;
+  short_description: string;
+  severity: string;
+  priority: string;
+  state: string;
+  sys_created_on: string;
+  cmdb_ci?: string;
+  assignment_group?: string;
+  description?: string;
+  work_notes?: string;
+  category?: string;
 }
 
 export type GithubFileKind = 'skill' | 'instruction' | 'prompt';
@@ -146,6 +180,14 @@ export interface AttachedFileMeta {
    * reply after the fact.
    */
   warning?: string | null;
+  /** Set only for a synthetic "attached file" built from a ServiceNow
+   *  incident fetch (see serviceNow/serviceNowIngest.ts) rather than a
+   *  real picked file -- lets the Control panel render the ticket-checkbox
+   *  table instead of the generic CSV column/row-range controls. */
+  sourceKind?: 'servicenow-incidents';
+  /** Compact per-incident rows for the Control panel's checkbox table.
+   *  Only set alongside sourceKind: 'servicenow-incidents'. */
+  incidentSummary?: { number: string; shortDescription: string; severity: string }[];
 }
 
 /** User-chosen slice of an attached file's content to actually send. */
@@ -158,6 +200,9 @@ export interface FileSelection {
   csvRowFrom?: number;
   csvRowTo?: number;
   sheetSelections?: Record<string, { columns?: string[]; rowFrom?: number; rowTo?: number }>;
+  /** ServiceNow incidents only: incident numbers checked in the Control
+   *  panel's ticket table. Empty/omitted = include every fetched incident. */
+  selectedIncidentNumbers?: string[];
 }
 
 /** Result of applying a FileSelection: what will actually be sent. */
@@ -196,6 +241,10 @@ export type HostMessage =
       exceeded: boolean;
       lastLineIncluded: string | null;
     }
+  | { type: 'managedFileContent'; kind: GithubFileKind; file: GithubFileRef; content: string }
+  | { type: 'incidentSearchBusy' }
+  | { type: 'incidentSearchResult'; count: number; query: string }
+  | { type: 'incidentSearchError'; message: string }
   | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string };
 
 /** Webview -> Extension messages */
@@ -234,7 +283,11 @@ export type WebviewMessage =
       selectedInstructions: GithubFileRef[];
       selectedPromptFile: GithubFileRef | null;
       attachedFileId: string | null;
-    };
+    }
+  | { type: 'loadManagedFile'; kind: GithubFileKind; file: GithubFileRef }
+  | { type: 'saveManagedFile'; kind: GithubFileKind; file: GithubFileRef | null; fileName: string; content: string }
+  | { type: 'fetchIncidents'; malCodes: string[]; dateFrom: string; dateTo: string }
+  | { type: 'downloadIncidentAnalysisCsv'; headers: string[]; rows: string[][] };
 
 export interface ContextSummary {
   modelName: string;

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HostMessage, SessionTokenTotals, WebviewMessage } from '../types';
+import { AttachedFileMeta, HostMessage, SessionTokenTotals, WebviewMessage } from '../types';
 import { WORKFLOWS, getWorkflow } from '../workflows';
 import { WIZARD_SCHEMAS } from '../wizards/wizardSchemas';
 import { renderMarkdown, computeFileName } from '../wizards/markdownRenderer';
@@ -18,6 +18,15 @@ import { promptForAdminPassword } from '../security/adminAuth';
 import { AttachedFilesStore, generateFileId } from '../fileIngest/attachedFilesStore';
 import { parseFile } from '../fileIngest';
 import { summarizeContent } from '../fileIngest/textStats';
+import { exportRowsToDownloads } from '../telemetry/csvExport';
+import { fetchIncidents, buildIncidentQuery, ServiceNowApiError } from '../serviceNow/serviceNowClient';
+import {
+  getServiceNowUsername,
+  getServiceNowInstanceUrl,
+  getServiceNowTimeoutMs,
+  getOrPromptServiceNowPassword,
+} from '../serviceNow/serviceNowCredentials';
+import { toParsedCsvFile, toIncidentRowSummaries } from '../serviceNow/serviceNowIngest';
 
 const TOKEN_SESSION_STATE_KEY = 'arsimTdsQe.tokenSession';
 const EMPTY_SESSION_TOTALS: SessionTokenTotals = {
@@ -248,8 +257,105 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         await this.handleEstimateContext(message);
         return;
 
+      case 'loadManagedFile': {
+        const file = await readGithubFile(message.file, 200_000);
+        this.post({ type: 'managedFileContent', kind: message.kind, file: message.file, content: file.content });
+        return;
+      }
+
+      case 'saveManagedFile': {
+        const fileName = message.fileName.trim() || message.file?.fileName || `untitled.${message.kind}.md`;
+        const relativePath = await writeGithubFile(message.kind, fileName, message.content);
+        this.post({ type: 'toast', level: 'info', message: `Saved ${message.kind} to ${relativePath}` });
+        await this.sendFileLists();
+        return;
+      }
+
+      case 'fetchIncidents':
+        await this.handleFetchIncidents(message);
+        return;
+
+      case 'downloadIncidentAnalysisCsv': {
+        if (message.rows.length === 0) {
+          this.post({ type: 'toast', level: 'warn', message: 'No table rows to export.' });
+          return;
+        }
+        try {
+          const fileUri = await exportRowsToDownloads(message.headers, message.rows, 'prod-incident-analysis');
+          const reveal = 'Reveal in Folder';
+          vscode.window
+            .showInformationMessage(`Exported ${message.rows.length} row(s) to ${fileUri.fsPath}`, reveal)
+            .then((choice) => {
+              if (choice === reveal) vscode.commands.executeCommand('revealFileInOS', fileUri);
+            });
+        } catch (error) {
+          this.post({ type: 'toast', level: 'error', message: `CSV export failed: ${toMessage(error)}` });
+        }
+        return;
+      }
+
       default:
         return;
+    }
+  }
+
+  /**
+   * Fetches incidents from ServiceNow for the given MAL codes/date range
+   * and wraps the result as a synthetic attached CSV file -- from this
+   * point on it flows through exactly the same pipeline a real uploaded
+   * CSV would (AttachedFilesStore, context budgeting/truncation, the
+   * Context Limit meter, and the Control panel, which renders a
+   * ticket-checkbox table instead of column/row-range controls when it
+   * sees `meta.sourceKind === 'servicenow-incidents'`).
+   */
+  private async handleFetchIncidents(
+    message: Extract<WebviewMessage, { type: 'fetchIncidents' }>
+  ): Promise<void> {
+    this.post({ type: 'incidentSearchBusy' });
+    try {
+      const username = getServiceNowUsername();
+      if (!username) {
+        throw new Error('Set arsimTdsQe.serviceNowUsername in Settings before fetching incidents.');
+      }
+      const password = await getOrPromptServiceNowPassword(this.context, username);
+      const instanceUrl = getServiceNowInstanceUrl();
+      const timeoutMs = getServiceNowTimeoutMs();
+
+      const incidents = await fetchIncidents(
+        { malCodes: message.malCodes, dateFrom: message.dateFrom, dateTo: message.dateTo },
+        { username, password },
+        instanceUrl,
+        timeoutMs
+      );
+
+      const parsedCsv = toParsedCsvFile(incidents);
+      const fileId = generateFileId();
+      const meta: AttachedFileMeta = {
+        fileId,
+        fileName: `ServiceNow Incidents (${incidents.length})`,
+        kind: 'csv',
+        csvColumns: parsedCsv.columns,
+        csvTotalRows: parsedCsv.rows.length,
+        warning:
+          incidents.length === 0
+            ? 'No incidents were found for the given MAL code(s) and date range. Try widening the range or double-checking the codes.'
+            : null,
+        sourceKind: 'servicenow-incidents',
+        incidentSummary: toIncidentRowSummaries(incidents),
+      };
+      this.attachedFiles.add(meta, parsedCsv);
+
+      const content = this.attachedFiles.currentContent(fileId) ?? '';
+      this.post({ type: 'fileAttached', meta, preview: summarizeContent(fileId, content) });
+      this.post({
+        type: 'incidentSearchResult',
+        count: incidents.length,
+        query: buildIncidentQuery({ malCodes: message.malCodes, dateFrom: message.dateFrom, dateTo: message.dateTo }),
+      });
+    } catch (error) {
+      const kind = error instanceof ServiceNowApiError ? error.kind : null;
+      const prefix = kind === 'timeout' ? 'Timed out: ' : kind === 'auth' ? 'Authentication failed: ' : '';
+      this.post({ type: 'incidentSearchError', message: `${prefix}${toMessage(error)}` });
     }
   }
 

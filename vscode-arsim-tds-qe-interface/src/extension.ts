@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { MainViewProvider } from './panels/MainViewProvider';
+import { forgetServiceNowPassword } from './serviceNow/serviceNowCredentials';
 
 let activeProvider: MainViewProvider | undefined;
 
@@ -22,6 +23,15 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('arsimTdsQe.refresh', () => {
       provider.refreshFiles();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('arsimTdsQe.forgetServiceNowPassword', async () => {
+      await forgetServiceNowPassword(context);
+      vscode.window.showInformationMessage(
+        'ServiceNow password cleared. You will be prompted again next time PROD Incident Analysis fetches incidents.'
+      );
     })
   );
 }

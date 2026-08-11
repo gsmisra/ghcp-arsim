@@ -2,7 +2,7 @@
   "name": "arsim-tds-qe-ghcp-interface",
   "displayName": "ARSIM TDS QE GHCP Interface",
   "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: PR Analysis, PROD Incident Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "publisher": "arsim-tds",
   "private": true,
   "license": "UNLICENSED",
@@ -57,6 +57,11 @@
         "title": "Refresh Skills / Instructions / Prompts",
         "category": "ARSIM TDS QE",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "arsimTdsQe.forgetServiceNowPassword",
+        "title": "Forget ServiceNow Password",
+        "category": "ARSIM TDS QE"
       }
     ],
     "menus": {
@@ -106,6 +111,22 @@
           "minimum": 1,
           "maximum": 2048,
           "description": "Maximum size (MB) of a file that can be attached via Browse for .docx/.pdf/.csv/.xlsx/.xls/text files. Parsing fully loads the file into memory as JS objects/strings, which for CSV/XLSX in particular can use significantly more memory than the file's on-disk size -- lower this on memory-constrained machines if large attachments cause the extension host to struggle."
+        },
+        "arsimTdsQe.serviceNowInstanceUrl": {
+          "type": "string",
+          "default": "https://tdbfa.service-now.com",
+          "description": "Base URL of the ServiceNow instance queried by the PROD Incident Analysis workflow."
+        },
+        "arsimTdsQe.serviceNowUsername": {
+          "type": "string",
+          "default": "ws.auto.td.tdsrpt",
+          "description": "Basic-auth username for the ServiceNow incident API used by PROD Incident Analysis. Not secret. The matching password is never stored here -- it's entered once via a masked prompt and held in VS Code's encrypted SecretStorage; use \"ARSIM TDS QE: Forget ServiceNow Password\" (Command Palette) to clear it, e.g. after a rotation."
+        },
+        "arsimTdsQe.serviceNowApiTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1000,
+          "description": "Timeout (ms) for a ServiceNow incident-fetch request before it's treated as failed."
         }
       }
     }
