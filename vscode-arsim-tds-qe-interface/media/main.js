@@ -57,6 +57,11 @@
       settingsPrompts: true,
       settingsConnection: true,
       settingsAuthor: true,
+      // PROD Incident Analysis's MAL Codes / date-range / Fetch form --
+      // collapsed by default so it doesn't dominate the compose area once
+      // incidents are already loaded; the result summary + jump links stay
+      // visible regardless of this state (see incidentSearchPanelHtml).
+      incidentSearchForm: true,
     },
     promptEditorExpanded: false,
     historyFilters: { workflow: '', model: '', host: '', dateFrom: '', dateTo: '', search: '' },
@@ -164,6 +169,7 @@
         <span class="token-footer-title">${tokenIcon()} Token Usage</span>
         <span class="chevron">${chevronIcon()}</span>
       </div>
+      <div id="context-meter-container" class="token-footer-meter">${contextMeterHtml()}</div>
       <div class="token-footer-body">
         <div class="token-footer-links">
           <button class="link-btn" id="token-history-btn">Token Usage History</button>
@@ -178,6 +184,7 @@
     `;
 
     wireToggles(el, renderTokenFooter);
+    wireControlContextLinks(el);
     document.getElementById('token-reset-btn').addEventListener('click', () => {
       post({ type: 'resetTokenSession' });
     });
@@ -484,11 +491,13 @@
   }
 
   /**
-   * The merged Chat segment: a scrollable two-party thread (request bubbles
-   * right-aligned/grey, response bubbles left-aligned/green, Messenger-
-   * style) on top, with the compose bar (textarea, attach, context meter,
-   * Send) pinned below it -- the thread scrolls internally, the compose
-   * bar never does, exactly like a real chat app.
+   * The merged Chat segment: a two-party thread (request bubbles right-
+   * aligned/grey, response bubbles left-aligned/green, Messenger-style),
+   * fixed to 70% of the viewport height with its own scrollbar (see
+   * "#card-chat .chat-panel" in main.css), followed by the compose bar
+   * (workflow/model status, textarea + send, attach/incident-search row).
+   * The Context Limit meter lives independently in the Token Usage footer
+   * now, not here -- see renderTokenFooter().
    */
   function chatCardBodyHtml() {
     const hasEntries = state.chatEntries.length > 0;
@@ -508,7 +517,6 @@
         <div class="hint">Press Enter to send · Shift+Enter for a new line</div>
         ${isIncidentWorkflow() ? incidentSearchPanelHtml() : attachedFileRowHtml()}
       </div>
-      <div id="context-meter-container">${contextMeterHtml()}</div>
     `;
   }
 
@@ -531,7 +539,7 @@
   function incidentSearchPanelHtml() {
     const s = state.incidentSearch;
     const hasResult = !!s.summary;
-    return `
+    const formFieldsHtml = `
       <div class="field">
         <label class="field-label">MAL Codes (comma-separated)</label>
         <input type="text" id="incident-mal-codes" value="${esc(s.malCodes)}" placeholder="e.g. INNPE, DDR" ${s.busy ? 'disabled' : ''} />
@@ -548,6 +556,16 @@
       </div>
       <div class="btn-row">
         <button class="btn secondary" id="fetch-incidents-btn" ${s.busy ? 'disabled' : ''}>${s.busy ? 'Fetching…' : 'Fetch Incidents'}</button>
+      </div>
+    `;
+
+    // The search form itself collapses (default collapsed, less clutter
+    // once results are already loaded); the result summary and jump links
+    // below it stay visible regardless, so they're reachable without
+    // reopening the form.
+    return `
+      ${settingsSectionHtml('incidentSearchForm', 'Incident Search (MAL Codes & Date Range)', 0, formFieldsHtml)}
+      <div class="btn-row">
         ${hasResult ? `<button class="link-btn" id="incident-control-link">Review / select tickets</button>` : ''}
         ${hasResult ? `<button class="link-btn" id="incident-new-search-btn">🔎 New incident search</button>` : ''}
         ${contextPickerLinksHtml()}
@@ -615,13 +633,21 @@
       // still arriving, this function isn't even re-run per token (see
       // 'streamChunk'), so there's nothing to parse yet anyway.
       const table = !entry.streaming ? parseMarkdownTable(entry.responseText) : null;
+      // When a table was found, show ONLY the rendered <table> plus
+      // whatever surrounding prose remains -- never the raw "| a | b |"
+      // source text too. Showing both was redundant and, at a few hundred
+      // incident rows, made the bubble unreadably long and badly formatted.
+      const proseText = table ? stripTableSource(entry.responseText, table) : entry.responseText;
+      const bubbleHtml = proseText
+        ? `<div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${esc(proseText)}</div>`
+        : '';
       const tableBlock = table
         ? `${tableToHtml(table)}<div class="btn-row"><button class="link-btn" data-download-csv="${esc(entry.id)}">⬇ Download as CSV</button></div>`
         : '';
       responseBlock = `
         <div class="chat-message incoming">
           <div class="chat-timestamp">${esc(formatChatTimestamp(entry.timestamp))} · ${esc(entry.workflowLabel)}</div>
-          <div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${esc(entry.responseText)}</div>
+          ${bubbleHtml}
           ${tableBlock}
           ${entry.error ? `<div class="chat-error-note">⚠ Interrupted: ${esc(entry.error)}</div>` : ''}
           ${entry.contextSummary ? contextSummaryHtml(entry.contextSummary) : ''}
@@ -738,9 +764,26 @@
         j++;
       }
       if (rows.length === 0) continue;
-      return { headers, rows };
+      // startLine/endLine let the caller strip the raw "| a | b |" source
+      // lines back out of the surrounding prose once the table has been
+      // parsed into real data -- showing both the pipe-delimited source
+      // *and* the rendered table would be redundant and, at a few hundred
+      // incident rows, unreadably long.
+      return { headers, rows, startLine: i, endLine: j };
     }
     return null;
+  }
+
+  /** Removes a parsed table's source lines from the raw response text,
+   *  leaving only whatever prose came before/after it (e.g. a lead-in
+   *  sentence and the "Key Observations" paragraph the system prompt asks
+   *  for) -- that prose renders in the chat bubble, the table renders
+   *  separately as a real <table> via tableToHtml(). */
+  function stripTableSource(text, table) {
+    const lines = text.split('\n');
+    const before = lines.slice(0, table.startLine).join('\n').trim();
+    const after = lines.slice(table.endLine).join('\n').trim();
+    return [before, after].filter(Boolean).join('\n\n');
   }
 
   function tableToHtml(table) {
@@ -758,7 +801,7 @@
         return `<tr>${cellsHtml}</tr>`;
       })
       .join('');
-    return `<div class="history-table-wrap chat-inline"><table class="history-table"><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+    return `<div class="history-table-wrap chat-inline"><table class="history-table incident-table"><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
   }
 
   const INCIDENT_SUGGESTED_QUESTIONS = [
@@ -1520,8 +1563,8 @@
           <button class="link-btn" id="cp-incident-select-all">Select all</button>
           <button class="link-btn" id="cp-incident-select-none">Select none</button>
         </div>
-        <div class="history-table-wrap">
-          <table class="history-table">
+        <div class="history-table-wrap chat-inline">
+          <table class="history-table incident-table">
             <thead><tr><th></th><th>Incident</th><th>Short Description</th><th>Severity</th></tr></thead>
             <tbody>${rows || `<tr><td colspan="4" class="empty-hint">No incidents in this result set.</td></tr>`}</tbody>
           </table>

@@ -49,14 +49,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The page itself is the scroll container -- from the Chat segment down
+   through the Token Usage footer, everything flows and scrolls together
+   as one continuous page instead of the old fixed-100vh/inner-scroll
+   split. The header stays pinned via position:sticky below. */
 html, body {
-  height: 100%;
+  height: auto;
+  min-height: 100%;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
 }
 
 /* ---------- Header ---------- */
@@ -126,8 +131,11 @@ html, body {
 
 /* ---------- Body / sections ---------- */
 .body {
-  flex: 1;
-  overflow-y: auto;
+  /* No longer a bounded flex:1/overflow-y:auto region of its own -- it
+     sizes to its content and the page (html/body) scrolls around it, so
+     the Chat card, its compose controls, and the Token Usage footer below
+     all move together in one continuous scroll. */
+  flex: none;
   padding: 14px 14px 28px;
   display: flex;
   flex-direction: column;
@@ -725,6 +733,17 @@ textarea.expanded {
   font-size: 11px;
 }
 
+/* The Context Limit meter lives here now (independent of the Chat
+   segment) and stays visible even while Token Usage itself is collapsed
+   -- context budget is worth seeing at a glance without opening the
+   segment, the same way the segment's own title row always stays visible. */
+.token-footer-meter:empty {
+  display: none;
+}
+.token-footer-meter .context-meter-field {
+  margin-bottom: 0;
+}
+
 .token-footer-row {
   display: flex;
   align-items: center;
@@ -944,25 +963,18 @@ textarea.expanded {
   text-decoration: underline;
 }
 
-/* ---------- Full-height chat (main view shows only the Chat card) ----------
-   .body is already a flex column filling the space between the header and
-   the Token Usage footer (see ".body" above); the expanded Chat card just
-   needs to opt into taking all of that space and pass it down to its own
-   thread, instead of sizing to content and leaving dead space below it. */
-#card-chat:not(.collapsed) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-#card-chat:not(.collapsed) .card-body {
-  flex: 1;
-  min-height: 0;
-}
+/* ---------- Chat thread height (main view shows only the Chat card) ----------
+   The thread is a fixed 70% of viewport height with its own scrollbar --
+   a real chat app's message list, not a region that grows to "whatever
+   space happens to be left." The page itself (html/body, see above)
+   scrolls independently to reach the compose controls and Token Usage
+   footer below, exactly like the page-level scroll in a real chat client
+   coexists with the message list's own internal scroll. */
 #card-chat:not(.collapsed) .response-panel.chat-panel {
-  flex: 1;
-  min-height: 120px;
-  max-height: none;
+  height: 70vh;
+  max-height: 70vh;
+  min-height: 240px;
+  resize: none; /* a fixed, purpose-sized height -- manual resize would fight it */
 }
 
 /* ---------- Compact, Messenger-style send button ---------- */
@@ -1015,16 +1027,33 @@ textarea.expanded {
 .severity-badge.sev-green { background: var(--td-green-soft); color: var(--td-green); }
 .severity-badge.sev-neutral { background: rgba(128, 128, 128, 0.18); color: var(--vscode-descriptionForeground); }
 
-/* A markdown table parsed out of an LLM response, rendered inline in a
-   chat bubble -- same visual language as .history-table, capped shorter
-   since it lives inside a scrolling chat thread rather than a full-screen
-   overlay. */
+/* A markdown table parsed out of an LLM response, rendered inline in the
+   chat thread -- same visual language as .history-table, given its own
+   generous scroll area since the thread itself already scrolls (see
+   #card-chat .chat-panel above). */
 .history-table-wrap.chat-inline {
-  max-height: 320px;
+  max-height: 420px;
   margin-top: 4px;
 }
 .history-table-wrap.chat-inline .history-table {
   white-space: normal;
+}
+
+/* Incident data specifically (chat response tables + the Control panel's
+   ticket-selection table) gets larger type than the compact Token Usage
+   History table -- this is the primary content the user is reading in
+   this workflow, so it's sized for comfortable reading, not density. */
+.incident-table th,
+.incident-table td {
+  font-size: 14px;
+  padding: 10px 12px;
+  line-height: 1.4;
+}
+.incident-table thead th {
+  font-size: 11.5px;
+}
+.incident-table {
+  white-space: normal; /* long text columns (Short Description, Recommendation, etc.) wrap instead of clipping to one line */
 }
 
 /* ---------- Suggested-question chips (PROD Incident Analysis) ---------- */

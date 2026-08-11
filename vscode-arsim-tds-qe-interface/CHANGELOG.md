@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.1
+
+- **The whole main UI now scrolls as one page** -- Chat, its compose controls, and the Token Usage footer flow together and scroll continuously (header stays pinned at the top) instead of the Chat segment being boxed into a separately-scrolling region that made everything feel cramped.
+- **The Chat thread is a fixed 70% of the viewport height** with its own scrollbar -- a real chat app's message list, sized for maximum reading room, not "whatever space happened to be left."
+- **MAL Codes / date range / Fetch Incidents are now one collapsible section**, collapsed by default -- once incidents are loaded, the form tucks away and only the result summary + "Review / select tickets" / "New incident search" links stay visible, keeping the compose area clean.
+- **The Context Limit meter moved into the Token Usage footer**, independent of the Chat segment -- it's always visible there (even while Token Usage itself is collapsed) at the bottom of the UI, exactly where usage information belongs.
+- **Fixed: incident-analysis table responses looked badly formatted.** The raw `| pipe | delimited |` markdown table text was being shown in the chat bubble *in addition to* the properly rendered table underneath it -- doubled, unreadable output for a few-hundred-row result. Now only the rendered table (plus any surrounding prose, like the "Key Observations" paragraph) is shown.
+- **Larger, cleaner incident table typography** -- both the chat response tables and the Control panel's ticket-selection table use bigger text and more generous padding than the compact Token Usage History table, and wrap long text (Short Description, Recommendation, etc.) instead of clipping it.
+
 ## 0.10.0
 
 - **PROD Incident Analysis is now a real ServiceNow-backed workflow**, not a paste-your-own-text workflow. Selecting it in Settings shows a MAL Codes field (comma-separated, auto-trimmed) and From/To date pickers right in the Chat compose area; "Fetch Incidents" queries ServiceNow's `incident` table (`cmdb_ci.u_application_code` IN the given codes, `sys_created_on` within the given range) and loads the results into the chat's context automatically -- the same way an attached file would, so you can keep asking follow-up questions against it without re-fetching.

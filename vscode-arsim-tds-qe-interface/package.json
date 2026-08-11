@@ -2,7 +2,7 @@
   "name": "arsim-tds-qe-ghcp-interface",
   "displayName": "ARSIM TDS QE GHCP Interface",
   "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: PR Analysis, PROD Incident Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "publisher": "arsim-tds",
   "private": true,
   "license": "UNLICENSED",
