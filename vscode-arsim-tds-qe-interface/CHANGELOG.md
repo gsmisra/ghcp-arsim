@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1
+
+- **"Would you like to analyze a new story?" (Yes/No)** now appears automatically as a chat bubble right after a feature file is saved -- Yes jumps straight back to picking `jtmf.td.com`/`track.td.com` and a new ticket URL (username/password are reused from memory, never re-asked), No leaves a closing note and lets you keep asking follow-up questions about the current story. This loop continues for as long as you stay on the workflow, until you switch workflows in Settings or close VS Code.
+- **Generated .feature output is now syntax-highlighted** in the chat, not just monospaced: `Feature`/`Background`/`Scenario`/`Scenario Outline`/`Examples` headers in green, `Given`/`When`/`Then`/`And`/`But` steps in blue, `@tags` in purple, `#` comments muted/italic, and `Examples:` data-table rows in orange -- rendered in its own bordered code-block panel so it reads like a real BDD file instead of plain chat text.
+
 ## 0.11.0
 
 - **New workflow: "Generate Feature File From Jira Story"** -- fetches a Jira story from `jtmf.td.com` or `track.td.com`, splits its Acceptance Criteria into segments, and generates a Gherkin/BDD `.feature` file (Scenario/Scenario Outline + Examples, `@tag`ged with the ticket key, written from a senior-BA + senior-QE perspective), then saves it to a folder you choose and opens it.

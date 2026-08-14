@@ -1119,12 +1119,45 @@ textarea.expanded {
 }
 
 /* Generated Gherkin/BDD .feature output, shown in a monospace code block
-   instead of the default proportional-font chat-bubble text. */
+   instead of the default proportional-font chat-bubble text -- styled to
+   read like a real BDD file in an editor: its own panel background
+   (distinct from the green chat-bubble tint) plus per-keyword coloring
+   below, not just monospace text. */
 .code-block {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  margin: 0;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.08));
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  display: block;
+}
+
+/* Gherkin keyword highlighting (see formatGherkinHtml() in main.js) --
+   colors chosen to read distinctly in both themes without introducing new
+   palette entries: section headers in the brand green, step keywords in
+   the theme's charts-blue, @tags in charts-purple, comments muted/italic,
+   data-table rows in charts-orange so they stand apart from prose steps. */
+.code-block.gherkin .gherkin-keyword {
+  color: var(--td-green);
+  font-weight: 700;
+}
+.code-block.gherkin .gherkin-step {
+  color: var(--vscode-charts-blue, #3794ff);
+  font-weight: 600;
+}
+.code-block.gherkin .gherkin-tag {
+  color: var(--vscode-charts-purple, #b180d7);
+  font-weight: 600;
+}
+.code-block.gherkin .gherkin-comment {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+.code-block.gherkin .gherkin-table {
+  color: var(--vscode-charts-orange, #d18616);
 }

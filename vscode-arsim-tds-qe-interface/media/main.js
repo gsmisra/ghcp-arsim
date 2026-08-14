@@ -645,13 +645,14 @@
       // incident rows, made the bubble unreadably long and badly formatted.
       const proseText = table ? stripTableSource(entry.responseText, table) : entry.responseText;
       // Gherkin/BDD .feature output (Generate Feature File From Jira
-      // Story) reads far better in a monospace code block than the
-      // proportional-font bubble everything else uses -- readability
-      // polish only, the raw text isn't touched.
+      // Story) is shown as a syntax-highlighted, monospace code block
+      // instead of the proportional-font bubble everything else uses --
+      // readability polish only, the raw text isn't touched (and is still
+      // exactly what gets saved to disk).
       const isGherkin = !table && !entry.streaming && /^\s*Feature:/m.test(proseText);
       const bubbleHtml = proseText
         ? `<div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${
-            isGherkin ? `<pre class="code-block">${esc(proseText)}</pre>` : esc(proseText)
+            isGherkin ? `<pre class="code-block gherkin">${formatGherkinHtml(proseText)}</pre>` : esc(proseText)
           }</div>`
         : '';
       const tableBlock = table
@@ -815,6 +816,49 @@
       })
       .join('');
     return `<div class="history-table-wrap chat-inline"><table class="history-table incident-table"><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+  }
+
+  /**
+   * Line-based Gherkin/BDD syntax highlighting for a generated .feature
+   * file (Generate Feature File From Jira Story) -- not a Gherkin parser,
+   * just enough pattern-matching per line to color the keywords a real
+   * BDD file editor would: Feature/Background/Scenario/Scenario
+   * Outline/Examples headers, Given/When/Then/And/But steps, @tags, "|"
+   * data-table rows, and "#" comments. Each line is HTML-escaped first
+   * (esc()), then a plain-text keyword is wrapped in a span -- safe
+   * because none of these keywords contain characters esc() would have
+   * changed.
+   */
+  function gherkinLineHtml(rawLine) {
+    const escaped = esc(rawLine);
+    const trimmed = rawLine.trim();
+
+    if (/^@\S/.test(trimmed)) {
+      return `<span class="gherkin-tag">${escaped}</span>`;
+    }
+    if (/^#/.test(trimmed)) {
+      return `<span class="gherkin-comment">${escaped}</span>`;
+    }
+    if (/^(Feature|Background|Scenario Outline|Scenario|Examples)\s*:/.test(trimmed)) {
+      return escaped.replace(
+        /^(\s*)(Feature|Background|Scenario Outline|Scenario|Examples)(\s*:)/,
+        (_m, ws, kw, colon) => `${ws}<span class="gherkin-keyword">${kw}${colon}</span>`
+      );
+    }
+    if (/^(Given|When|Then|And|But)\b/.test(trimmed)) {
+      return escaped.replace(
+        /^(\s*)(Given|When|Then|And|But)\b/,
+        (_m, ws, kw) => `${ws}<span class="gherkin-step">${kw}</span>`
+      );
+    }
+    if (trimmed.startsWith('|')) {
+      return `<span class="gherkin-table">${escaped}</span>`;
+    }
+    return escaped;
+  }
+
+  function formatGherkinHtml(text) {
+    return text.split('\n').map(gherkinLineHtml).join('\n');
   }
 
   const INCIDENT_SUGGESTED_QUESTIONS = [
@@ -1071,8 +1115,15 @@
       }
     } else if (state.jiraWizard.step === 'ready' && option.value === 'send') {
       sendJiraFeatureFileRequest();
-    } else if (state.jiraWizard.step === 'done' && option.value === 'newSearch') {
-      startJiraWizard();
+    } else if (state.jiraWizard.step === 'done') {
+      if (option.value === 'yes') {
+        // Same site/ticket-URL flow, credentials reused from memory
+        // (state.jiraWizard.hasCredentials stays true) -- keeps going
+        // until the user changes the workflow or closes VS Code.
+        startJiraWizard();
+      } else {
+        pushJiraBotText('Okay -- ask me anything else about this story, or switch workflows in Settings when you\'re done.');
+      }
     }
     renderBody();
   }
@@ -2753,7 +2804,10 @@
 
       case 'featureFileSaved':
         pushJiraBotText(`Saved to ${msg.path} and opened it in the editor.`);
-        pushJiraBotOptions('What next?', [{ label: '🔁 Analyze another ticket', value: 'newSearch' }]);
+        pushJiraBotOptions('Would you like to analyze a new story?', [
+          { label: 'Yes', value: 'yes' },
+          { label: 'No', value: 'no' },
+        ]);
         state.jiraWizard.step = 'done';
         renderBody();
         break;
