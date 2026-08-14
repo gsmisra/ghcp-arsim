@@ -2,7 +2,7 @@
   "name": "arsim-tds-qe-ghcp-interface",
   "displayName": "ARSIM TDS QE GHCP Interface",
   "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: PR Analysis, PROD Incident Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
-  "version": "0.11.1",
+  "version": "0.11.3",
   "publisher": "arsim-tds",
   "private": true,
   "license": "UNLICENSED",
@@ -61,6 +61,11 @@
       {
         "command": "arsimTdsQe.forgetServiceNowPassword",
         "title": "Forget ServiceNow Password",
+        "category": "ARSIM TDS QE"
+      },
+      {
+        "command": "arsimTdsQe.showLogs",
+        "title": "Show Logs",
         "category": "ARSIM TDS QE"
       }
     ],

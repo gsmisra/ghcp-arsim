@@ -35,11 +35,13 @@ import {
   JiraApiError,
   JiraAttachmentRaw,
   JIRA_SITE_BASE_URLS,
+  ACCEPTANCE_CRITERIA_FIELD_BY_SITE,
 } from '../jira/jiraClient';
 import { flattenJiraHtml } from '../jira/htmlFlatten';
 import { splitAcceptanceCriteria } from '../jira/acSplitter';
 import { JiraContextStore, JiraChunkEntry } from '../jira/jiraContextStore';
 import { detectKind } from '../fileIngest/detect';
+import { log, logError } from '../logging/log';
 
 const TOKEN_SESSION_STATE_KEY = 'arsimTdsQe.tokenSession';
 const EMPTY_SESSION_TOTALS: SessionTokenTotals = {
@@ -100,6 +102,10 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.onDidReceiveMessage((message: WebviewMessage) =>
       this.handleMessage(message).catch((error) => {
+        // The toast only ever shows the user a one-line message; the log
+        // gets the full detail (stack trace when there is one) -- see
+        // "ARSIM TDS QE: Show Logs" / View > Output > "ARSIM TDS QE".
+        logError(`Unhandled error while processing "${message.type}"`, error);
         this.post({ type: 'toast', level: 'error', message: toMessage(error) });
       })
     );
@@ -116,6 +122,13 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
+    // Skipped for 'estimateContext': it fires on a 500ms debounce for
+    // every keystroke pause and would drown out everything else in the
+    // log for no real benefit (it's advisory-only UI feedback -- see
+    // handleEstimateContext's own comment).
+    if (message.type !== 'estimateContext') {
+      log(`Handling message: ${message.type}`);
+    }
     switch (message.type) {
       case 'ready': {
         const config = vscode.workspace.getConfiguration('arsimTdsQe');
@@ -361,12 +374,14 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       const instanceUrl = getServiceNowInstanceUrl();
       const timeoutMs = getServiceNowTimeoutMs();
 
+      log(`ServiceNow fetch: ${instanceUrl} malCodes=[${message.malCodes.join(', ')}] ${message.dateFrom}..${message.dateTo}`);
       const incidents = await fetchIncidents(
         { malCodes: message.malCodes, dateFrom: message.dateFrom, dateTo: message.dateTo },
         { username, password },
         instanceUrl,
         timeoutMs
       );
+      log(`ServiceNow fetch OK: ${incidents.length} incident(s) returned`);
 
       const parsedCsv = toParsedCsvFile(incidents);
       const fileId = generateFileId();
@@ -395,6 +410,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const kind = error instanceof ServiceNowApiError ? error.kind : null;
       const prefix = kind === 'timeout' ? 'Timed out: ' : kind === 'auth' ? 'Authentication failed: ' : '';
+      logError('ServiceNow fetch failed', error);
       this.post({ type: 'incidentSearchError', message: `${prefix}${toMessage(error)}` });
     }
   }
@@ -412,35 +428,44 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     try {
       const baseUrl = JIRA_SITE_BASE_URLS[message.site];
+      // The Acceptance Criteria custom field id differs per instance --
+      // jtmf.td.com is customfield_10200, track.td.com is customfield_14400.
+      const acFieldKey = ACCEPTANCE_CRITERIA_FIELD_BY_SITE[message.site];
       const creds = { username: message.username, password: message.password };
       const timeoutMs = vscode.workspace.getConfiguration('arsimTdsQe').get<number>('jiraApiTimeoutMs', 30000);
       const key = extractJiraKey(message.ticketUrl);
 
+      log(`Jira fetch: ${baseUrl} ${key} (AC field: ${acFieldKey})`);
       const issue = await fetchJiraIssue(key, baseUrl, creds, timeoutMs);
       const summary = issue.fields.summary || key;
       const chunks: JiraChunkEntry[] = [];
 
-      const renderedOrRaw = (rendered: string | null | undefined, raw: string | null | undefined): string =>
-        rendered ? flattenJiraHtml(rendered) : raw || '';
+      const renderedOrRaw = (rendered: unknown, raw: unknown): string => {
+        if (typeof rendered === 'string' && rendered) return flattenJiraHtml(rendered);
+        return typeof raw === 'string' ? raw : '';
+      };
 
       const descriptionText = renderedOrRaw(issue.renderedFields?.description, issue.fields.description);
       if (descriptionText.trim()) {
         chunks.push({ id: `${key}-description`, label: `${key} Description`, kind: 'description', content: descriptionText });
       }
 
-      const acText = renderedOrRaw(issue.renderedFields?.customfield_14400, issue.fields.customfield_14400);
+      const acText = renderedOrRaw(issue.renderedFields?.[acFieldKey], issue.fields[acFieldKey]);
+      log(`Jira AC field "${acFieldKey}" for ${key}: ${acText.trim() ? `${acText.length} char(s)` : 'empty/not present'}`);
       splitAcceptanceCriteria(acText).forEach((seg, i) => {
         chunks.push({ id: `${key}-ac-${i}`, label: `${key} ${seg.label}`, kind: 'ac', content: seg.content });
       });
 
       // Single-level linked-ticket expansion: a link found in AC/description
       // gets fetched once; that linked ticket's own text is not scanned
-      // again, so this can never recurse or run away.
+      // again, so this can never recurse or run away. Linked tickets are
+      // assumed to be on the same site as the primary ticket (both known
+      // hosts share this workflow's site selection either way).
       for (const linkedKey of findLinkedTicketKeys(`${descriptionText}\n${acText}`, key)) {
         try {
           const linked = await fetchJiraIssue(linkedKey, baseUrl, creds, timeoutMs);
           const linkedDesc = renderedOrRaw(linked.renderedFields?.description, linked.fields.description);
-          const linkedAc = renderedOrRaw(linked.renderedFields?.customfield_14400, linked.fields.customfield_14400);
+          const linkedAc = renderedOrRaw(linked.renderedFields?.[acFieldKey], linked.fields[acFieldKey]);
           const combined = [
             linked.fields.summary ? `Summary: ${linked.fields.summary}` : '',
             linkedDesc ? `Description:\n${linkedDesc}` : '',
@@ -451,10 +476,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
           if (combined.trim()) {
             chunks.push({ id: `${linkedKey}-linked`, label: `Linked ticket ${linkedKey}`, kind: 'linked-ticket', content: combined });
           }
-        } catch {
+        } catch (error) {
           // A linked ticket that can't be fetched (wrong host, no access,
           // deleted) is supplementary context, not required -- skip it
           // rather than failing the whole fetch.
+          logError(`Linked Jira ticket ${linkedKey} could not be fetched, skipped`, error);
         }
       }
 
@@ -480,7 +506,9 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
           const attachmentId = `${key}-att-${att.id}`;
           const { parsed, meta } = await parseFile(buffer, att.filename, attachmentId);
           chunks.push({ id: attachmentId, label: `Attachment: ${att.filename}`, kind: 'attachment', parsed, meta });
+          log(`Jira attachment parsed: ${att.filename} (${kind})`);
         } catch (error) {
+          logError(`Could not read Jira attachment "${att.filename}"`, error);
           this.post({
             type: 'toast',
             level: 'warn',
@@ -489,6 +517,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      log(`Jira fetch OK: ${key} -- ${chunks.length} chunk(s) (${chunks.map((c) => c.kind).join(', ')})`);
       this.jiraContext.reset(chunks);
 
       const chunkMetas: JiraChunkMeta[] = chunks.map((c) => ({
@@ -510,6 +539,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const kind = error instanceof JiraApiError ? error.kind : null;
       const prefix = kind === 'timeout' ? 'Timed out: ' : kind === 'auth' ? 'Authentication failed: ' : '';
+      logError('Jira fetch failed', error);
       this.post({ type: 'jiraTicketError', message: `${prefix}${toMessage(error)}` });
     }
   }
@@ -535,8 +565,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       const doc = await vscode.workspace.openTextDocument(fileUri);
       await vscode.window.showTextDocument(doc, { preview: false });
 
-      this.post({ type: 'featureFileSaved', path: vscode.workspace.asRelativePath(fileUri, false) });
+      const relativePath = vscode.workspace.asRelativePath(fileUri, false);
+      log(`Feature file saved: ${relativePath}`);
+      this.post({ type: 'featureFileSaved', path: relativePath });
     } catch (error) {
+      logError('Saving the feature file failed', error);
       this.post({ type: 'featureFileSaveError', message: toMessage(error) });
     }
   }
@@ -598,8 +631,10 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       }
 
       const content = this.attachedFiles.currentContent(fileId) ?? '';
+      log(`File attached: ${fileName} (${meta.kind})`);
       this.post({ type: 'fileAttached', meta, preview: summarizeContent(fileId, content) });
     } catch (error) {
+      logError('Attaching the picked file failed', error);
       this.post({ type: 'fileAttachError', message: toMessage(error) });
     }
   }
@@ -665,6 +700,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     try {
       const workflow = getWorkflow(message.workflowId);
       const model = await resolveModel(message.modelUid);
+      log(`sendPrompt: workflow=${workflow.id} model=${message.modelUid} requestId=${requestId}`);
       const attachedFile = message.attachedFileId
         ? this.buildAttachedFilePayload(message.attachedFileId)
         : null;
@@ -739,6 +775,9 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       });
       await this.tokenHistory.flush();
 
+      log(
+        `sendPrompt OK: requestId=${requestId} promptTokens=${usage.promptTokens} completionTokens=${usage.completionTokens} charsSent=${summary.approxCharsSent}`
+      );
       this.post({
         type: 'streamDone',
         requestId,
@@ -747,6 +786,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         session: this.sessionTotals,
       });
     } catch (error) {
+      logError(`sendPrompt failed: requestId=${requestId}`, error);
       this.post({ type: 'streamError', requestId, message: toMessage(error) });
     } finally {
       this.cancellations.delete(requestId);

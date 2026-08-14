@@ -24,18 +24,24 @@ export class JiraApiError extends Error {
  *  this workflow reads. `renderedFields` (via `?expand=renderedFields`)
  *  gives HTML with real `<table>` markup for wiki-markup tables; `fields`
  *  is the plain-text/wiki-markup fallback when rendering isn't available
- *  (e.g. an instance that doesn't support the expand param). */
+ *  (e.g. an instance that doesn't support the expand param).
+ *
+ *  The Acceptance Criteria custom field is NOT the same id on both sites
+ *  (jtmf.td.com uses customfield_10200, track.td.com uses
+ *  customfield_14400) -- so it can't be a fixed property here. Both
+ *  `fields`/`renderedFields` carry an index signature instead, and the
+ *  caller looks the right key up via ACCEPTANCE_CRITERIA_FIELD_BY_SITE. */
 export interface JiraIssueRaw {
   key: string;
   fields: {
     summary: string;
     description: string | null;
-    customfield_14400: string | null;
     attachment?: JiraAttachmentRaw[];
+    [customFieldKey: string]: unknown;
   };
   renderedFields?: {
     description?: string | null;
-    customfield_14400?: string | null;
+    [customFieldKey: string]: unknown;
   };
 }
 
@@ -51,6 +57,14 @@ export interface JiraAttachmentRaw {
 export const JIRA_SITE_BASE_URLS: Record<'jtmf' | 'track', string> = {
   jtmf: 'https://jtmf.td.com',
   track: 'https://track.td.com',
+};
+
+/** The Acceptance Criteria custom field id is per-instance, not universal
+ *  -- jtmf.td.com and track.td.com are separate Jira instances with
+ *  different custom-field numbering. */
+export const ACCEPTANCE_CRITERIA_FIELD_BY_SITE: Record<'jtmf' | 'track', string> = {
+  jtmf: 'customfield_10200',
+  track: 'customfield_14400',
 };
 
 /** Ticket keys look like PROJ-123. Accepts either a bare key or a full

@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import { MainViewProvider } from './panels/MainViewProvider';
 import { forgetServiceNowPassword } from './serviceNow/serviceNowCredentials';
+import { initLogger, log, showLogs } from './logging/log';
 
 let activeProvider: MainViewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
+  initLogger(context);
+  log('Extension activated.');
+
   const provider = new MainViewProvider(context);
   activeProvider = provider;
 
@@ -32,6 +36,12 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.window.showInformationMessage(
         'ServiceNow password cleared. You will be prompted again next time PROD Incident Analysis fetches incidents.'
       );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('arsimTdsQe.showLogs', () => {
+      showLogs();
     })
   );
 }

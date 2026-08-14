@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.3
+
+- **Fixed: Acceptance Criteria field id is per-instance, not universal.** `jtmf.td.com` uses `customfield_10200` for Acceptance Criteria; `track.td.com` uses `customfield_14400`. The workflow was hardcoded to `customfield_14400` for both sites, so a `jtmf.td.com` ticket's AC always came back empty (no AC chunks, nothing to build scenarios from) even though the fetch itself succeeded. Now the field id is resolved per the site chosen in the chat. Also added a log line reporting the resolved AC field and its character count for each fetch, so this is easy to confirm going forward (View > Output > "ARSIM TDS QE").
+
+## 0.11.2
+
+- **Real run logs.** Previously the only error surface was a transient toast with a one-line message -- nothing was ever recorded. Added a proper Output Channel: **View > Output > "ARSIM TDS QE"**, or run **"ARSIM TDS QE: Show Logs"** from the Command Palette. It now logs every message the sidebar sends to the extension (ServiceNow/Jira fetch requests with their parameters, sendPrompt lifecycle with token counts, file attach/save operations) plus the full error detail -- message *and* stack trace -- for anything that fails, not just the short toast text. `estimateContext` (the debounced live context-size check that fires on every keystroke pause) is intentionally excluded from the per-message log line to avoid drowning everything else out.
+
 ## 0.11.1
 
 - **"Would you like to analyze a new story?" (Yes/No)** now appears automatically as a chat bubble right after a feature file is saved -- Yes jumps straight back to picking `jtmf.td.com`/`track.td.com` and a new ticket URL (username/password are reused from memory, never re-asked), No leaves a closing note and lets you keep asking follow-up questions about the current story. This loop continues for as long as you stay on the workflow, until you switch workflows in Settings or close VS Code.
