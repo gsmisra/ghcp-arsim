@@ -2,7 +2,7 @@
   "name": "arsim-tds-qe-ghcp-interface",
   "displayName": "ARSIM TDS QE GHCP Interface",
   "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: PR Analysis, PROD Incident Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "publisher": "arsim-tds",
   "private": true,
   "license": "UNLICENSED",
@@ -127,6 +127,12 @@
           "default": 30000,
           "minimum": 1000,
           "description": "Timeout (ms) for a ServiceNow incident-fetch request before it's treated as failed."
+        },
+        "arsimTdsQe.jiraApiTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1000,
+          "description": "Timeout (ms) for a Jira ticket/attachment fetch request (Generate Feature File From Jira Story) before it's treated as failed."
         }
       }
     }

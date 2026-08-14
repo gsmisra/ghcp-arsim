@@ -84,6 +84,12 @@
     // since selecting a prompt already doubles as opening it for editing).
     // Shape: { kind: 'skill'|'instruction', file, content, dirty, expanded }
     managedFileEditor: null,
+    // ---- Generate Feature File From Jira Story ----
+    // The whole site/username/password/ticket-url/save-path collection
+    // happens as a conversation inside the chat itself (bot bubbles the
+    // user answers by clicking or typing in the normal compose box) --
+    // see createEmptyJiraWizard()/startJiraWizard() for the step machine.
+    jiraWizard: createEmptyJiraWizard(),
   };
 
   let contextEstimateTimer = null;
@@ -507,15 +513,15 @@
         <span class="hint">${hasEntries ? `${state.chatEntries.length} exchange${state.chatEntries.length === 1 ? '' : 's'} this session` : 'No messages yet'}</span>
         <button class="icon-btn small" id="copy-response-btn" title="Copy full conversation" aria-label="Copy conversation" ${hasEntries ? '' : 'disabled'}>${copyIcon()}</button>
       </div>
-      <div class="${threadClasses}" id="chat-thread">${chatThreadHtml()}${suggestedChipsHtml()}</div>
+      <div class="${threadClasses}" id="chat-thread">${jiraWizardLogHtml()}${chatThreadHtml()}${suggestedChipsHtml()}</div>
       <div class="field compose-field">
         ${workflowModelStatusHtml()}
         <div class="compose-input-row">
-          <textarea id="user-text" placeholder="${esc(placeholderForWorkflow())}" style="min-height:80px;">${esc(state.userText)}</textarea>
-          <button class="icon-btn send-icon-btn" id="send-btn" title="Send" aria-label="Send to Copilot" ${state.streaming ? 'disabled' : ''}>${state.streaming ? spinnerIcon() : sendIcon()}</button>
+          ${composeInputHtml()}
+          <button class="icon-btn send-icon-btn" id="send-btn" title="Send" aria-label="Send to Copilot" ${state.streaming || isJiraComposeBusy() ? 'disabled' : ''}>${state.streaming ? spinnerIcon() : sendIcon()}</button>
         </div>
         <div class="hint">Press Enter to send · Shift+Enter for a new line</div>
-        ${isIncidentWorkflow() ? incidentSearchPanelHtml() : attachedFileRowHtml()}
+        ${isJiraWorkflow() ? jiraContextRowHtml() : isIncidentWorkflow() ? incidentSearchPanelHtml() : attachedFileRowHtml()}
       </div>
     `;
   }
@@ -638,8 +644,15 @@
       // source text too. Showing both was redundant and, at a few hundred
       // incident rows, made the bubble unreadably long and badly formatted.
       const proseText = table ? stripTableSource(entry.responseText, table) : entry.responseText;
+      // Gherkin/BDD .feature output (Generate Feature File From Jira
+      // Story) reads far better in a monospace code block than the
+      // proportional-font bubble everything else uses -- readability
+      // polish only, the raw text isn't touched.
+      const isGherkin = !table && !entry.streaming && /^\s*Feature:/m.test(proseText);
       const bubbleHtml = proseText
-        ? `<div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${esc(proseText)}</div>`
+        ? `<div class="chat-bubble incoming" id="response-bubble-${esc(entry.id)}">${
+            isGherkin ? `<pre class="code-block">${esc(proseText)}</pre>` : esc(proseText)
+          }</div>`
         : '';
       const tableBlock = table
         ? `${tableToHtml(table)}<div class="btn-row"><button class="link-btn" data-download-csv="${esc(entry.id)}">⬇ Download as CSV</button></div>`
@@ -851,6 +864,21 @@
   }
 
   function placeholderForWorkflow() {
+    if (isJiraWorkflow()) {
+      switch (state.jiraWizard.step) {
+        case 'username':
+          return 'Enter your Jira username...';
+        case 'ticketUrl':
+          return 'Enter the Jira ticket URL or key (e.g. PROJ-123)...';
+        case 'savePath':
+          return 'Relative folder path to save the .feature file (blank = workspace root)...';
+        case 'ready':
+        case 'done':
+          return 'Ask a follow-up question about this story, or use the buttons above...';
+        default:
+          return 'Follow the prompts above in the chat...';
+      }
+    }
     const w = state.workflows.find((x) => x.id === state.workflowId);
     return w ? w.inputPlaceholder : 'Describe your request...';
   }
@@ -858,6 +886,11 @@
   function isIncidentWorkflow() {
     const w = state.workflows.find((x) => x.id === state.workflowId);
     return !!w && w.dataSource === 'servicenow-incidents';
+  }
+
+  function isJiraWorkflow() {
+    const w = state.workflows.find((x) => x.id === state.workflowId);
+    return !!w && w.dataSource === 'jira-issue';
   }
 
   /** Adds the active workflow's auto-Skill/Instruction/Prompt (if any and
@@ -919,6 +952,16 @@
       state.autoSelection.prompt = null;
     }
 
+    // Leaving Generate Feature File From Jira Story: the username/password
+    // held in state.jiraWizard are in-memory only by design (never
+    // SecretStorage, never a file) and are explicitly meant to be forgotten
+    // the moment the user leaves this workflow -- not just reset to an
+    // empty form.
+    const leavingWorkflow = state.workflows.find((w) => w.id === state.workflowId);
+    if (leavingWorkflow && leavingWorkflow.dataSource === 'jira-issue') {
+      state.jiraWizard = createEmptyJiraWizard();
+    }
+
     state.workflowId = newWorkflowId;
     state.chatEntries = [];
     state.userText = '';
@@ -929,6 +972,252 @@
     state.incidentSearch = { malCodes: '', dateFrom: '', dateTo: '', busy: false, summary: null };
 
     ensureAutoSelectionForCurrentWorkflow();
+
+    const enteringWorkflow = state.workflows.find((w) => w.id === newWorkflowId);
+    if (enteringWorkflow && enteringWorkflow.dataSource === 'jira-issue') {
+      startJiraWizard();
+    }
+  }
+
+  // ---------------- Generate Feature File From Jira Story ----------------
+  // The whole setup (site, username, masked password, ticket URL, and
+  // later the save path) is collected as a conversation inside the chat
+  // itself: a bot bubble poses each question, the user answers by clicking
+  // a bubble option or typing in the normal compose box, and the answer is
+  // echoed back as an outgoing bubble -- see jiraWizardLogHtml() for how
+  // this renders and onSend()/handleJiraWizardAnswer() for how a typed
+  // answer gets routed here instead of to the LLM.
+
+  function createEmptyJiraWizard() {
+    return {
+      // idle -> chooseSite -> [username -> password ->] ticketUrl ->
+      // fetching -> ready -> llmPending -> savePath -> saving -> done
+      step: 'idle',
+      site: null, // 'jtmf' | 'track'
+      username: '',
+      password: '',
+      // Once true, "Analyze another ticket" skips straight past
+      // username/password back to ticketUrl -- credentials are asked once
+      // per workflow-active session, not once per ticket.
+      hasCredentials: false,
+      ticketKey: null,
+      ticketSummary: null,
+      chunks: [], // JiraChunkMeta[] from the host (metadata only, never content)
+      selectedChunkIds: new Set(),
+      attachmentSelectionDrafts: {}, // chunkId -> working FileSelection, mirrors fileSelectionDraft
+      log: [], // { id, kind: 'bot-text'|'bot-options'|'user-text', text, options?, answered? }
+      pendingRequestId: null, // the sendPrompt requestId this wizard is waiting on, if any
+      controlPanelOpen: false,
+      controlPanelChunkId: null, // set when reviewing one attachment's own range controls
+    };
+  }
+
+  function pushJiraBotText(text) {
+    state.jiraWizard.log.push({ id: uid(), kind: 'bot-text', text });
+  }
+  function pushJiraBotOptions(text, options) {
+    state.jiraWizard.log.push({ id: uid(), kind: 'bot-options', text, options, answered: false });
+  }
+  function pushJiraUserEcho(text) {
+    state.jiraWizard.log.push({ id: uid(), kind: 'user-text', text });
+  }
+
+  /** Starts (or restarts, for "Analyze another ticket") the setup
+   *  conversation. Site is always asked again -- only username/password
+   *  are skipped once already known, per spec. */
+  function startJiraWizard() {
+    state.jiraWizard.log = [];
+    state.jiraWizard.chunks = [];
+    state.jiraWizard.selectedChunkIds = new Set();
+    state.jiraWizard.attachmentSelectionDrafts = {};
+    state.jiraWizard.ticketKey = null;
+    state.jiraWizard.ticketSummary = null;
+    state.jiraWizard.pendingRequestId = null;
+    pushJiraBotOptions('Which Jira site is this story on?', [
+      { label: 'jtmf.td.com', value: 'jtmf' },
+      { label: 'track.td.com', value: 'track' },
+    ]);
+    state.jiraWizard.step = 'chooseSite';
+  }
+
+  /** True while the compose box should be disabled because the wizard is
+   *  waiting on a bubble click or host-side work, not on typed text. */
+  function isJiraComposeBusy() {
+    return isJiraWorkflow() && ['idle', 'chooseSite', 'fetching', 'saving'].includes(state.jiraWizard.step);
+  }
+
+  /** True for steps answered by typing in the normal compose box --
+   *  onSend() routes to handleJiraWizardAnswer() instead of sendPrompt for
+   *  exactly these; every other workflow's onSend() path is untouched. */
+  function isJiraFreeTextStep(step) {
+    return step === 'username' || step === 'password' || step === 'ticketUrl' || step === 'savePath';
+  }
+
+  function onJiraWizardOptionClick(entryId, optionIndex) {
+    const entry = state.jiraWizard.log.find((e) => e.id === entryId);
+    if (!entry || entry.kind !== 'bot-options' || entry.answered) return;
+    const option = entry.options[optionIndex];
+    entry.answered = true;
+    pushJiraUserEcho(option.label);
+
+    if (state.jiraWizard.step === 'chooseSite') {
+      state.jiraWizard.site = option.value;
+      if (state.jiraWizard.hasCredentials) {
+        pushJiraBotText('Enter the URL (or ticket key, e.g. PROJ-123) of the Jira story to analyze.');
+        state.jiraWizard.step = 'ticketUrl';
+      } else {
+        pushJiraBotText('Enter your Jira username.');
+        state.jiraWizard.step = 'username';
+      }
+    } else if (state.jiraWizard.step === 'ready' && option.value === 'send') {
+      sendJiraFeatureFileRequest();
+    } else if (state.jiraWizard.step === 'done' && option.value === 'newSearch') {
+      startJiraWizard();
+    }
+    renderBody();
+  }
+
+  /** Routes a typed answer for the current free-text wizard step -- called
+   *  from onSend() instead of the normal sendPrompt flow. */
+  function handleJiraWizardAnswer(rawText) {
+    const step = state.jiraWizard.step;
+    const text = rawText.trim();
+
+    if (step !== 'savePath' && !text) {
+      toast('warn', 'Enter a value before sending.');
+      return;
+    }
+
+    if (step === 'username') {
+      state.jiraWizard.username = text;
+      pushJiraUserEcho(text);
+      pushJiraBotText('Enter your Jira password (masked).');
+      state.jiraWizard.step = 'password';
+    } else if (step === 'password') {
+      state.jiraWizard.password = text;
+      state.jiraWizard.hasCredentials = true;
+      // Never echo the real password or even its length -- a fixed mask.
+      pushJiraUserEcho('••••••••');
+      pushJiraBotText('Enter the URL (or ticket key, e.g. PROJ-123) of the Jira story to analyze.');
+      state.jiraWizard.step = 'ticketUrl';
+    } else if (step === 'ticketUrl') {
+      pushJiraUserEcho(text);
+      pushJiraBotText('Fetching ticket details…');
+      state.jiraWizard.step = 'fetching';
+      post({
+        type: 'jiraFetchTicket',
+        site: state.jiraWizard.site,
+        username: state.jiraWizard.username,
+        password: state.jiraWizard.password,
+        ticketUrl: text,
+      });
+    } else if (step === 'savePath') {
+      pushJiraUserEcho(text || '(workspace root)');
+      const lastEntry = state.chatEntries[state.chatEntries.length - 1];
+      const content = lastEntry ? lastEntry.responseText : '';
+      post({
+        type: 'saveFeatureFile',
+        relativePath: text,
+        fileNameHint: state.jiraWizard.ticketSummary || state.jiraWizard.ticketKey || 'feature',
+        content,
+      });
+      state.jiraWizard.step = 'saving';
+    }
+
+    state.userText = '';
+    renderBody();
+  }
+
+  /** Fires the real LLM request -- no free-text question needed, the
+   *  "Send data to LLM" bubble click is itself the trigger, so the
+   *  request text is auto-generated. Goes through the *normal* onSend()
+   *  path (step is 'llmPending' by then, not one of the wizard's own
+   *  free-text steps), so token counting/streaming/history all work
+   *  exactly as they do for every other workflow. */
+  function sendJiraFeatureFileRequest() {
+    // The "Send data to LLM" bubble is already consumed (its buttons
+    // removed) by the time this runs -- if sending can't actually proceed
+    // (no model selected yet, or a previous request is still streaming),
+    // re-post a fresh options bubble so the user has a way to retry
+    // instead of the wizard silently dead-ending in 'llmPending'.
+    if (state.streaming || !state.modelUid) {
+      if (!state.modelUid) toast('warn', 'Select a Copilot model first, then try again.');
+      pushJiraBotOptions('Ready when you are.', [
+        { label: '📤 Send data to LLM for feature file generation', value: 'send' },
+      ]);
+      state.jiraWizard.step = 'ready';
+      renderBody();
+      return;
+    }
+
+    const label = state.jiraWizard.ticketSummary
+      ? `${state.jiraWizard.ticketKey}: ${state.jiraWizard.ticketSummary}`
+      : state.jiraWizard.ticketKey;
+    state.userText = `Generate a Gherkin BDD .feature file for the Jira story ${label}.`;
+    state.jiraWizard.step = 'llmPending';
+    onSend();
+    state.jiraWizard.pendingRequestId = state.requestId;
+  }
+
+  /** The setup conversation, rendered with the exact same chat-bubble
+   *  markup as everything else (zero new bubble CSS needed) -- shown above
+   *  the permanent chatEntries thread. Resets each "round" (see
+   *  startJiraWizard) rather than accumulating forever; completed feature-
+   *  file generations stay in chatEntries permanently like any other
+   *  exchange. */
+  function jiraWizardLogHtml() {
+    if (!isJiraWorkflow() || state.jiraWizard.log.length === 0) return '';
+    return state.jiraWizard.log.map(jiraLogEntryHtml).join('');
+  }
+
+  function jiraLogEntryHtml(entry) {
+    if (entry.kind === 'user-text') {
+      return `
+        <div class="chat-message outgoing">
+          <div class="chat-bubble outgoing">${esc(entry.text)}</div>
+        </div>`;
+    }
+    const optionsHtml =
+      entry.kind === 'bot-options' && !entry.answered
+        ? `<div class="bubble-options">${entry.options
+            .map(
+              (o, i) =>
+                `<button class="bubble-option-btn" data-wizard-option-entry="${esc(entry.id)}" data-wizard-option-index="${i}">${esc(o.label)}</button>`
+            )
+            .join('')}</div>`
+        : '';
+    return `
+      <div class="chat-message incoming">
+        <div class="chat-bubble incoming">${esc(entry.text)}${optionsHtml}</div>
+      </div>`;
+  }
+
+  /** Swaps the normal compose textarea for a masked password input during
+   *  the password step -- same id either way, so renderBody()'s generic
+   *  focus-preserving logic keeps working unchanged. */
+  function composeInputHtml() {
+    if (isJiraWorkflow() && state.jiraWizard.step === 'password') {
+      return `<input type="password" id="user-text" class="jira-password-input" placeholder="Enter password (masked)" value="${esc(state.userText)}" autocomplete="off" />`;
+    }
+    const disabled = isJiraComposeBusy();
+    return `<textarea id="user-text" placeholder="${esc(placeholderForWorkflow())}" style="min-height:80px;" ${disabled ? 'disabled' : ''}>${esc(state.userText)}</textarea>`;
+  }
+
+  /** Beside Browse for every other workflow; for this one it's the "Review
+   *  / select context" link into the Control panel's chunk checklist (once
+   *  a ticket is loaded) plus the usual Select Skill/Instruction/Prompt
+   *  links -- no Browse button, since context comes from the fetched
+   *  ticket, not a picked file. */
+  function jiraContextRowHtml() {
+    const hasChunks = state.jiraWizard.chunks.length > 0;
+    const reviewLabel = hasChunks
+      ? `Review / select context (${state.jiraWizard.selectedChunkIds.size}/${state.jiraWizard.chunks.length})`
+      : '';
+    return `
+      <div class="btn-row">
+        ${hasChunks ? `<button class="link-btn" id="jira-control-link">${esc(reviewLabel)}</button>` : ''}
+        ${contextPickerLinksHtml()}
+      </div>`;
   }
 
   // ---------------- Wiring: main body ----------------
@@ -1000,6 +1289,18 @@
     }
 
     wireIncidentSearchPanel();
+
+    document.querySelectorAll('[data-wizard-option-entry]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        onJiraWizardOptionClick(
+          btn.getAttribute('data-wizard-option-entry'),
+          parseInt(btn.getAttribute('data-wizard-option-index'), 10)
+        );
+      });
+    });
+
+    const jiraControlLink = document.getElementById('jira-control-link');
+    if (jiraControlLink) jiraControlLink.addEventListener('click', openJiraControlPanel);
 
     document.querySelectorAll('[data-suggested-question]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1118,12 +1419,19 @@
         selectedInstructions: state.instructions.filter((i) => state.selectedInstructions.has(i.relativePath)),
         selectedPromptFile: state.selectedPromptFile,
         attachedFileId: state.attachedFile ? state.attachedFile.meta.fileId : null,
+        jiraChunkIds: isJiraWorkflow() ? Array.from(state.jiraWizard.selectedChunkIds) : undefined,
       });
     }, 500);
   }
 
   function onSend() {
     if (state.streaming) return;
+
+    if (isJiraWorkflow() && isJiraFreeTextStep(state.jiraWizard.step)) {
+      handleJiraWizardAnswer(state.userText);
+      return;
+    }
+
     const requestText = state.userText.trim();
     if (!requestText) {
       toast('warn', 'Enter a request before sending.');
@@ -1170,6 +1478,7 @@
       selectedInstructions: state.instructions.filter((i) => state.selectedInstructions.has(i.relativePath)),
       selectedPromptFile: state.selectedPromptFile,
       attachedFileId: state.attachedFile ? state.attachedFile.meta.fileId : null,
+      jiraChunkIds: isJiraWorkflow() ? Array.from(state.jiraWizard.selectedChunkIds) : undefined,
     });
   }
 
@@ -1510,8 +1819,50 @@
     renderControlPanel();
   }
 
+  /** Generate Feature File From Jira Story's own "Control the data sent in
+   *  the context" -- a checklist of chunks (AC segments/Description/linked
+   *  tickets/attachments) instead of the single-attached-file range
+   *  controls below, since this workflow can have several simultaneously
+   *  selectable pieces of context. Uses a separate open/close pair (rather
+   *  than reusing openControlPanel's state.attachedFile guard) since Jira
+   *  context was deliberately kept out of the shared attach-file plumbing
+   *  -- see JiraContextStore's doc comment on the host side for why. */
+  function openJiraControlPanel() {
+    if (state.jiraWizard.chunks.length === 0) return;
+    state.jiraWizard.controlPanelOpen = true;
+    state.jiraWizard.controlPanelChunkId = null;
+    renderControlPanel();
+  }
+
+  function closeJiraControlPanel() {
+    state.jiraWizard.controlPanelOpen = false;
+    state.jiraWizard.controlPanelChunkId = null;
+    renderControlPanel();
+  }
+
+  function jiraChunkKindLabel(kind) {
+    switch (kind) {
+      case 'ac':
+        return 'Acceptance Criteria';
+      case 'description':
+        return 'Description';
+      case 'linked-ticket':
+        return 'Linked Ticket';
+      case 'attachment':
+        return 'Attachment';
+      default:
+        return kind;
+    }
+  }
+
   function renderControlPanel() {
     const overlay = document.getElementById('control-overlay');
+
+    if (state.jiraWizard.controlPanelOpen) {
+      renderJiraControlPanel(overlay);
+      return;
+    }
+
     if (!state.controlPanelOpen || !state.attachedFile) {
       overlay.classList.remove('open');
       overlay.innerHTML = '';
@@ -1707,6 +2058,210 @@
     post({ type: 'updateFileSelection', fileId: state.attachedFile.meta.fileId, selection: draft });
     closeControlPanel();
     scheduleContextEstimate();
+  }
+
+  /** The chunk checklist (default view of the Jira Control panel): every
+   *  AC segment/Description/linked-ticket/attachment, a checkbox each,
+   *  and a "Range…" link on attachments that drills into
+   *  renderJiraAttachmentPanel() for that one attachment's own page/row/
+   *  sheet controls. */
+  function renderJiraControlPanel(overlay) {
+    if (!state.jiraWizard.controlPanelOpen) {
+      overlay.classList.remove('open');
+      overlay.innerHTML = '';
+      return;
+    }
+    overlay.classList.add('open');
+
+    const drillChunk = state.jiraWizard.controlPanelChunkId
+      ? state.jiraWizard.chunks.find((c) => c.id === state.jiraWizard.controlPanelChunkId)
+      : null;
+    if (drillChunk && drillChunk.attachmentMeta) {
+      renderJiraAttachmentPanel(overlay, drillChunk);
+      return;
+    }
+
+    const rows = state.jiraWizard.chunks
+      .map((c) => {
+        const checked = state.jiraWizard.selectedChunkIds.has(c.id);
+        return `
+        <tr>
+          <td><input type="checkbox" class="cp-jira-chunk-toggle" data-chunk-id="${esc(c.id)}" ${checked ? 'checked' : ''} /></td>
+          <td>${esc(jiraChunkKindLabel(c.kind))}</td>
+          <td>${esc(c.label)}</td>
+          <td class="num">${c.charCount.toLocaleString()} chars</td>
+          <td>${c.kind === 'attachment' ? `<button class="link-btn" data-jira-drill="${esc(c.id)}">Range…</button>` : ''}</td>
+        </tr>`;
+      })
+      .join('');
+
+    overlay.innerHTML = `
+      <div class="overlay-header">
+        <h2>Control the Data Sent in the Context</h2>
+        <button class="icon-btn" id="jira-cp-close" aria-label="Close">${closeIcon()}</button>
+      </div>
+      <div class="overlay-body">
+        <div class="hint">${state.jiraWizard.ticketKey ? esc(state.jiraWizard.ticketKey) + ': ' : ''}${esc(state.jiraWizard.ticketSummary || '')} -- select which pieces of context to include, then Apply Selection.</div>
+        <div class="btn-row">
+          <button class="link-btn" id="jira-cp-select-all">Select all</button>
+          <button class="link-btn" id="jira-cp-select-none">Select none</button>
+        </div>
+        <div class="history-table-wrap chat-inline">
+          <table class="history-table incident-table">
+            <thead><tr><th></th><th>Type</th><th>Label</th><th class="num">Size</th><th></th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="5" class="empty-hint">No context loaded yet.</td></tr>`}</tbody>
+          </table>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="jira-cp-apply">Apply Selection</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('jira-cp-close').addEventListener('click', closeJiraControlPanel);
+    document.getElementById('jira-cp-select-all')?.addEventListener('click', () => {
+      overlay.querySelectorAll('.cp-jira-chunk-toggle').forEach((el) => {
+        el.checked = true;
+      });
+    });
+    document.getElementById('jira-cp-select-none')?.addEventListener('click', () => {
+      overlay.querySelectorAll('.cp-jira-chunk-toggle').forEach((el) => {
+        el.checked = false;
+      });
+    });
+    document.getElementById('jira-cp-apply')?.addEventListener('click', () => {
+      state.jiraWizard.selectedChunkIds = new Set(
+        Array.from(overlay.querySelectorAll('.cp-jira-chunk-toggle:checked')).map((el) => el.getAttribute('data-chunk-id'))
+      );
+      closeJiraControlPanel();
+      scheduleContextEstimate();
+    });
+    overlay.querySelectorAll('[data-jira-drill]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.jiraWizard.controlPanelChunkId = btn.getAttribute('data-jira-drill');
+        renderControlPanel();
+      });
+    });
+  }
+
+  /** One attachment chunk's own page/row/sheet range controls -- reuses
+   *  the AttachedFileMeta shape (attachmentMeta) so this is structurally
+   *  the same docx/csv/xlsx UI the Browse-file feature already has, just
+   *  scoped to one chunk's own selection draft instead of the single
+   *  fileSelectionDraft. Attachments here are only ever docx/csv/xlsx
+   *  (the host only parses those three kinds for Jira attachments). */
+  function renderJiraAttachmentPanel(overlay, chunk) {
+    const meta = chunk.attachmentMeta;
+    const draft = state.jiraWizard.attachmentSelectionDrafts[chunk.id] || {};
+    let noteHtml = '';
+    let fieldsHtml = '';
+
+    if (meta.kind === 'docx') {
+      noteHtml = `<div class="hint">Word documents don't store real page numbers -- this range is an approximation. Leave blank to include the whole document.</div>`;
+      fieldsHtml = `
+        <div class="range-row">
+          <div class="field"><label class="field-label">From page (approx.)</label><input type="number" min="1" max="${meta.pageCount}" id="jcp-page-from" value="${draft.pageFrom || ''}" placeholder="1" /></div>
+          <div class="field"><label class="field-label">To page (approx.)</label><input type="number" min="1" max="${meta.pageCount}" id="jcp-page-to" value="${draft.pageTo || ''}" placeholder="${meta.pageCount}" /></div>
+        </div>`;
+    } else if (meta.kind === 'csv') {
+      noteHtml = `<div class="hint">Detected columns: ${meta.csvColumns.map(esc).join(', ')}. Leave the row range blank to include every row.</div>`;
+      fieldsHtml = `
+        <div class="range-row">
+          <div class="field"><label class="field-label">From row</label><input type="number" min="1" max="${meta.csvTotalRows}" id="jcp-csv-row-from" value="${draft.csvRowFrom || ''}" placeholder="1" /></div>
+          <div class="field"><label class="field-label">To row</label><input type="number" min="1" max="${meta.csvTotalRows}" id="jcp-csv-row-to" value="${draft.csvRowTo || ''}" placeholder="${meta.csvTotalRows}" /></div>
+        </div>`;
+    } else if (meta.kind === 'xlsx') {
+      noteHtml = `<div class="hint">Select one or more sheets and, optionally, a row range for each. If none are selected, the first sheet is sent by default.</div>`;
+      fieldsHtml = meta.sheets
+        .map((sheet) => {
+          const sel = (draft.sheetSelections || {})[sheet.name];
+          const checked = !!sel;
+          return `
+          <div class="sheet-selection-block">
+            <label class="check-row">
+              <input type="checkbox" class="jcp-sheet-toggle" data-sheet="${esc(sheet.name)}" ${checked ? 'checked' : ''} />
+              <span>${esc(sheet.name)} (${sheet.totalRows} row${sheet.totalRows === 1 ? '' : 's'})</span>
+            </label>
+            <div class="range-row">
+              <div class="field"><label class="field-label">From row</label><input type="number" min="1" class="jcp-sheet-row-from" data-sheet="${esc(sheet.name)}" ${checked ? '' : 'disabled'} value="${(sel && sel.rowFrom) || ''}" placeholder="1" /></div>
+              <div class="field"><label class="field-label">To row</label><input type="number" min="1" class="jcp-sheet-row-to" data-sheet="${esc(sheet.name)}" ${checked ? '' : 'disabled'} value="${(sel && sel.rowTo) || ''}" placeholder="${sheet.totalRows}" /></div>
+            </div>
+          </div>`;
+        })
+        .join('');
+    }
+
+    overlay.innerHTML = `
+      <div class="overlay-header">
+        <h2>${esc(meta.fileName)}</h2>
+        <button class="icon-btn" id="jcp-close" aria-label="Close">${closeIcon()}</button>
+      </div>
+      <div class="overlay-body">
+        ${noteHtml}
+        ${fieldsHtml}
+        <div class="btn-row">
+          <button class="btn" id="jcp-apply">Apply Range</button>
+          <button class="btn secondary" id="jcp-back">← Back to context list</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('jcp-close').addEventListener('click', closeJiraControlPanel);
+    document.getElementById('jcp-back').addEventListener('click', () => {
+      state.jiraWizard.controlPanelChunkId = null;
+      renderControlPanel();
+    });
+
+    if (meta.kind === 'xlsx') {
+      overlay.querySelectorAll('.jcp-sheet-toggle').forEach((el) => {
+        el.addEventListener('change', (e) => {
+          const sheetName = e.target.getAttribute('data-sheet');
+          draft.sheetSelections = draft.sheetSelections || {};
+          if (e.target.checked) {
+            draft.sheetSelections[sheetName] = draft.sheetSelections[sheetName] || {};
+          } else {
+            delete draft.sheetSelections[sheetName];
+          }
+          state.jiraWizard.attachmentSelectionDrafts[chunk.id] = draft;
+          renderControlPanel();
+        });
+      });
+    }
+
+    document.getElementById('jcp-apply').addEventListener('click', () => applyJiraAttachmentSelection(chunk, meta, draft));
+  }
+
+  function applyJiraAttachmentSelection(chunk, meta, draft) {
+    const num = (id) => {
+      const el = document.getElementById(id);
+      const v = el && el.value ? parseInt(el.value, 10) : undefined;
+      return Number.isFinite(v) ? v : undefined;
+    };
+
+    if (meta.kind === 'docx') {
+      draft.pageFrom = num('jcp-page-from');
+      draft.pageTo = num('jcp-page-to');
+    } else if (meta.kind === 'csv') {
+      draft.csvRowFrom = num('jcp-csv-row-from');
+      draft.csvRowTo = num('jcp-csv-row-to');
+    } else if (meta.kind === 'xlsx') {
+      const overlay = document.getElementById('control-overlay');
+      overlay.querySelectorAll('.jcp-sheet-toggle:checked').forEach((el) => {
+        const sheetName = el.getAttribute('data-sheet');
+        const fromInput = overlay.querySelector(`.jcp-sheet-row-from[data-sheet="${CSS.escape(sheetName)}"]`);
+        const toInput = overlay.querySelector(`.jcp-sheet-row-to[data-sheet="${CSS.escape(sheetName)}"]`);
+        draft.sheetSelections = draft.sheetSelections || {};
+        draft.sheetSelections[sheetName] = {
+          rowFrom: fromInput && fromInput.value ? parseInt(fromInput.value, 10) : undefined,
+          rowTo: toInput && toInput.value ? parseInt(toInput.value, 10) : undefined,
+        };
+      });
+    }
+
+    state.jiraWizard.attachmentSelectionDrafts[chunk.id] = draft;
+    post({ type: 'updateJiraAttachmentSelection', chunkId: chunk.id, selection: draft });
+    state.jiraWizard.controlPanelChunkId = null;
+    renderControlPanel();
   }
 
   // ---------------- Token Usage History overlay ----------------
@@ -2066,6 +2621,11 @@
           state.pendingPromptTokens = null;
           state.tokenSession = msg.session;
         }
+        if (isJiraWorkflow() && state.jiraWizard.pendingRequestId === msg.requestId) {
+          state.jiraWizard.pendingRequestId = null;
+          pushJiraBotText('Feature file generated below. Enter the relative path of the folder where you want to save it (leave blank for the workspace root).');
+          state.jiraWizard.step = 'savePath';
+        }
         renderBody();
         renderTokenFooter();
         break;
@@ -2153,6 +2713,55 @@
         state.contextMeter = { usedTokens: msg.usedTokens, maxTokens: msg.maxTokens, exceeded: msg.exceeded, lastLineIncluded: msg.lastLineIncluded };
         // Targeted DOM update, not renderBody() -- see updateContextMeterDom().
         updateContextMeterDom();
+        break;
+
+      case 'jiraTicketFetched': {
+        state.jiraWizard.ticketKey = msg.ticketKey;
+        state.jiraWizard.ticketSummary = msg.summary;
+        state.jiraWizard.chunks = msg.chunks;
+        state.jiraWizard.selectedChunkIds = new Set(msg.chunks.map((c) => c.id));
+
+        const acCount = msg.chunks.filter((c) => c.kind === 'ac').length;
+        const linkedCount = msg.chunks.filter((c) => c.kind === 'linked-ticket').length;
+        const attachmentCount = msg.chunks.filter((c) => c.kind === 'attachment').length;
+        const bits = [msg.summary, `${acCount} Acceptance Criteria segment${acCount === 1 ? '' : 's'} found`];
+        if (linkedCount) bits.push(`${linkedCount} linked ticket(s) included`);
+        if (attachmentCount) bits.push(`${attachmentCount} attachment(s) parsed`);
+        pushJiraBotText(bits.join(' -- '));
+        pushJiraBotOptions('Ready when you are.', [
+          { label: '📤 Send data to LLM for feature file generation', value: 'send' },
+        ]);
+        state.jiraWizard.step = 'ready';
+        renderBody();
+        scheduleContextEstimate();
+        break;
+      }
+
+      case 'jiraTicketError':
+        pushJiraBotText(`Could not fetch that ticket: ${msg.message} Enter a different URL/ticket key to try again.`);
+        state.jiraWizard.step = 'ticketUrl';
+        renderBody();
+        break;
+
+      case 'jiraChunkContentUpdated': {
+        const changedChunk = state.jiraWizard.chunks.find((c) => c.id === msg.chunkId);
+        if (changedChunk) changedChunk.charCount = msg.charCount;
+        if (state.jiraWizard.controlPanelOpen) renderControlPanel();
+        scheduleContextEstimate();
+        break;
+      }
+
+      case 'featureFileSaved':
+        pushJiraBotText(`Saved to ${msg.path} and opened it in the editor.`);
+        pushJiraBotOptions('What next?', [{ label: '🔁 Analyze another ticket', value: 'newSearch' }]);
+        state.jiraWizard.step = 'done';
+        renderBody();
+        break;
+
+      case 'featureFileSaveError':
+        pushJiraBotText(`Could not save the file: ${msg.message} Enter a different relative path.`);
+        state.jiraWizard.step = 'savePath';
+        renderBody();
         break;
 
       case 'toast':

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0
+
+- **New workflow: "Generate Feature File From Jira Story"** -- fetches a Jira story from `jtmf.td.com` or `track.td.com`, splits its Acceptance Criteria into segments, and generates a Gherkin/BDD `.feature` file (Scenario/Scenario Outline + Examples, `@tag`ged with the ticket key, written from a senior-BA + senior-QE perspective), then saves it to a folder you choose and opens it.
+- **The whole setup happens as a conversation in the chat itself**, exactly as specified: a bot bubble asks which site, then username, then a **masked** password field, then the ticket URL -- each answered by clicking a bubble option or typing in the normal compose box (which swaps to a real password input for that one step). Once fetched, a "Send data to LLM for feature file generation" bubble triggers the actual generation with no extra typing needed; after the file is generated another bubble prompts for the save folder and, once saved, a "🔁 Analyze another ticket" bubble lets you start over -- reusing the same site/credentials without asking again.
+- **Credentials are held in memory only** -- never written to a file, never SecretStorage -- and are explicitly forgotten the moment you switch away from this workflow, per how this was scoped.
+- **Linked tickets, HTML tables, and attachments are all pulled in automatically**: a `jtmf.td.com`/`track.td.com` URL found inside the Acceptance Criteria or Description is fetched too (one level deep); embedded wiki-markup tables are flattened cleanly instead of showing raw HTML; the latest version of any csv/xlsx/docx attachment is parsed and offered for inclusion (images are detected and skipped, with a toast telling you so).
+- **Fine-grained control**: "Review / select context" opens a checklist of every Acceptance Criteria segment, the Description, any linked tickets, and any attachments -- check/uncheck what goes to the model. Attachments get their own page/row/sheet range controls, same as a regular Browse-picked file. The Context Limit meter (now living in the Token Usage footer) reflects exactly what's selected.
+- **Auto-loaded, fully-editable persona, Skill, and Instruction** for this workflow, reachable via "Select Custom Prompt" / "Select Skill" / "Select Instruction", same mechanism as PROD Incident Analysis.
+- Generated feature-file responses render in a monospace code block for readability.
+
 ## 0.10.1
 
 - **The whole main UI now scrolls as one page** -- Chat, its compose controls, and the Token Usage footer flow together and scroll continuously (header stays pinned at the top) instead of the Chat segment being boxed into a separately-scrolling region that made everything feel cramped.

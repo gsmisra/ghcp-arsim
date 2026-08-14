@@ -222,6 +222,7 @@ label.field-label {
 select,
 input[type='text'],
 input[type='number'],
+input[type='password'],
 textarea {
   width: 100%;
   background: var(--vscode-input-background);
@@ -983,7 +984,8 @@ textarea.expanded {
   align-items: flex-end;
   gap: 8px;
 }
-.compose-input-row textarea {
+.compose-input-row textarea,
+.compose-input-row input {
   flex: 1;
 }
 .send-icon-btn {
@@ -1078,4 +1080,51 @@ textarea.expanded {
 .suggestion-chip:hover {
   background: var(--td-green);
   color: #ffffff;
+}
+
+/* ---------- Generate Feature File From Jira Story: chat-bubble wizard ---------- */
+/* Quick-reply-style buttons attached to a bot bubble (site choice, "Send
+   data to LLM", "Analyze another ticket") -- same pill language as
+   .suggestion-chip but stacked full-width inside the bubble itself rather
+   than a wrapping row below it, since these live *inside* an incoming
+   chat-bubble's padding. */
+.bubble-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.bubble-option-btn {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--td-green);
+  color: var(--td-green);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.bubble-option-btn:hover {
+  background: var(--td-green);
+  color: #ffffff;
+}
+
+/* The password step's masked input replaces the textarea in place (same
+   #user-text id) -- sized and styled to match it exactly so nothing shifts
+   visually when the compose control swaps type. */
+.jira-password-input {
+  min-height: 40px;
+}
+
+/* Generated Gherkin/BDD .feature output, shown in a monospace code block
+   instead of the default proportional-font chat-bubble text. */
+.code-block {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
 }

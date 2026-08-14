@@ -30,6 +30,13 @@ export interface BuildContextParams {
   selectedPromptFile: GithubFileRef | null;
   promptFileContentOverride?: string;
   attachedFile?: { fileName: string; content: string } | null;
+  /** Generate Feature File From Jira Story only: the currently-selected
+   *  chunks (AC segments, Description, linked tickets, attachments) --
+   *  already resolved to plain content host-side by JiraContextStore.
+   *  Folded in via the same generic `consume()` every other labeled
+   *  section uses, right after Skills/Instructions/Prompt and before the
+   *  attached file -- purely additive, no other section's logic changes. */
+  jiraChunks?: { label: string; content: string }[];
   /**
    * The selected model's real input-token budget, when known. When
    * provided (with `countTokens`), the total/attached-file character
@@ -150,6 +157,11 @@ export async function buildContext(
     usedPromptFile = consume(`Custom Prompt: ${params.selectedPromptFile.fileName}`, body);
   }
 
+  let jiraChunksIncluded = 0;
+  for (const chunk of params.jiraChunks ?? []) {
+    if (consume(`Jira: ${chunk.label}`, chunk.content)) jiraChunksIncluded += 1;
+  }
+
   // The attached file gets its own dedicated assembly (rather than going
   // through the generic `consume`) for two reasons: we need to surface the
   // exact last line that made it into the request, and it's the one
@@ -246,6 +258,7 @@ export async function buildContext(
       attachedFileLastLine,
       budgetSource,
       effectiveMaxTotalChars: effectiveMaxTotal,
+      jiraChunksIncluded,
     },
     promptTokens,
   };

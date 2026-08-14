@@ -12,7 +12,8 @@ export type WorkflowId =
   | 'automation-script-creation'
   | 'pr-analysis'
   | 'prod-incident-analysis'
-  | 'test-failure-analysis';
+  | 'test-failure-analysis'
+  | 'generate-feature-file-from-jira-story';
 
 export interface WorkflowDefinition {
   id: WorkflowId;
@@ -27,7 +28,7 @@ export interface WorkflowDefinition {
    * ServiceNow-backed PROD Incident Analysis workflow) so the webview can
    * key its UI off workflow metadata instead of hardcoding workflow ids.
    */
-  dataSource?: 'servicenow-incidents';
+  dataSource?: 'servicenow-incidents' | 'jira-issue';
   /** Workspace-relative .github/... paths auto-selected the moment this
    *  workflow becomes active (and cleanly removed -- not the user's own
    *  picks -- when the user switches away). */
@@ -65,6 +66,28 @@ export interface ServiceNowIncident {
   description?: string;
   work_notes?: string;
   category?: string;
+}
+
+/**
+ * One selectable piece of a fetched Jira story's context (an Acceptance
+ * Criteria segment, the Description, a linked ticket's own AC/description,
+ * or a parsed attachment). Deliberately never carries real content to the
+ * webview -- only `charCount` and, for an attachment, the same
+ * `AttachedFileMeta` shape the Browse-file feature already uses, so the
+ * Control panel can render the exact same pdf/docx/csv/xlsx range
+ * controls it already has for a real attached file. See
+ * src/jira/jiraContextStore.ts for the host-side counterpart that holds
+ * the actual content.
+ */
+export type JiraChunkKind = 'ac' | 'description' | 'linked-ticket' | 'attachment';
+
+export interface JiraChunkMeta {
+  id: string;
+  label: string;
+  kind: JiraChunkKind;
+  charCount: number;
+  /** attachment chunks only. */
+  attachmentMeta?: AttachedFileMeta;
 }
 
 export type GithubFileKind = 'skill' | 'instruction' | 'prompt';
@@ -245,6 +268,11 @@ export type HostMessage =
   | { type: 'incidentSearchBusy' }
   | { type: 'incidentSearchResult'; count: number; query: string }
   | { type: 'incidentSearchError'; message: string }
+  | { type: 'jiraTicketFetched'; ticketKey: string; summary: string; chunks: JiraChunkMeta[] }
+  | { type: 'jiraTicketError'; message: string }
+  | { type: 'jiraChunkContentUpdated'; chunkId: string; charCount: number }
+  | { type: 'featureFileSaved'; path: string }
+  | { type: 'featureFileSaveError'; message: string }
   | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string };
 
 /** Webview -> Extension messages */
@@ -264,6 +292,11 @@ export type WebviewMessage =
       selectedInstructions: GithubFileRef[];
       selectedPromptFile: GithubFileRef | null;
       attachedFileId: string | null;
+      /** Generate Feature File From Jira Story only: ids of the currently
+       *  checked JiraChunkMeta entries, read live at send/estimate time --
+       *  same "selection lives in webview state, read fresh on every call"
+       *  pattern already used for selectedSkills/selectedInstructions. */
+      jiraChunkIds?: string[] | null;
     }
   | { type: 'testConnection'; modelUid: string }
   | { type: 'saveWizardFile'; kind: GithubFileKind; data: Record<string, string> }
@@ -283,11 +316,15 @@ export type WebviewMessage =
       selectedInstructions: GithubFileRef[];
       selectedPromptFile: GithubFileRef | null;
       attachedFileId: string | null;
+      jiraChunkIds?: string[] | null;
     }
   | { type: 'loadManagedFile'; kind: GithubFileKind; file: GithubFileRef }
   | { type: 'saveManagedFile'; kind: GithubFileKind; file: GithubFileRef | null; fileName: string; content: string }
   | { type: 'fetchIncidents'; malCodes: string[]; dateFrom: string; dateTo: string }
-  | { type: 'downloadIncidentAnalysisCsv'; headers: string[]; rows: string[][] };
+  | { type: 'downloadIncidentAnalysisCsv'; headers: string[]; rows: string[][] }
+  | { type: 'jiraFetchTicket'; site: 'jtmf' | 'track'; username: string; password: string; ticketUrl: string }
+  | { type: 'updateJiraAttachmentSelection'; chunkId: string; selection: FileSelection }
+  | { type: 'saveFeatureFile'; relativePath: string; fileNameHint: string; content: string };
 
 export interface ContextSummary {
   modelName: string;
@@ -306,4 +343,8 @@ export interface ContextSummary {
   budgetSource: 'model' | 'config';
   /** The effective total character budget actually applied for this request. */
   effectiveMaxTotalChars: number;
+  /** Generate Feature File From Jira Story only: how many selected Jira
+   *  chunks (AC segments/Description/linked tickets/attachments) made it
+   *  into the request. 0 for every other workflow. */
+  jiraChunksIncluded: number;
 }

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { AttachedFileMeta, HostMessage, SessionTokenTotals, WebviewMessage } from '../types';
+import { AttachedFileMeta, HostMessage, JiraChunkMeta, SessionTokenTotals, WebviewMessage } from '../types';
 import { WORKFLOWS, getWorkflow } from '../workflows';
 import { WIZARD_SCHEMAS } from '../wizards/wizardSchemas';
 import { renderMarkdown, computeFileName } from '../wizards/markdownRenderer';
@@ -27,6 +27,19 @@ import {
   getOrPromptServiceNowPassword,
 } from '../serviceNow/serviceNowCredentials';
 import { toParsedCsvFile, toIncidentRowSummaries } from '../serviceNow/serviceNowIngest';
+import {
+  fetchJiraIssue,
+  fetchJiraAttachment,
+  extractJiraKey,
+  findLinkedTicketKeys,
+  JiraApiError,
+  JiraAttachmentRaw,
+  JIRA_SITE_BASE_URLS,
+} from '../jira/jiraClient';
+import { flattenJiraHtml } from '../jira/htmlFlatten';
+import { splitAcceptanceCriteria } from '../jira/acSplitter';
+import { JiraContextStore, JiraChunkEntry } from '../jira/jiraContextStore';
+import { detectKind } from '../fileIngest/detect';
 
 const TOKEN_SESSION_STATE_KEY = 'arsimTdsQe.tokenSession';
 const EMPTY_SESSION_TOTALS: SessionTokenTotals = {
@@ -61,6 +74,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   private sessionTotals: SessionTokenTotals;
   private readonly tokenHistory: TokenHistoryStore;
   private readonly attachedFiles = new AttachedFilesStore();
+  private readonly jiraContext = new JiraContextStore();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.sessionTotals = context.globalState.get<SessionTokenTotals>(
@@ -294,6 +308,32 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
+      case 'jiraFetchTicket':
+        await this.handleJiraFetchTicket(message);
+        return;
+
+      case 'updateJiraAttachmentSelection': {
+        const chunk = this.jiraContext.updateAttachmentSelection(message.chunkId, message.selection);
+        if (!chunk) {
+          this.post({
+            type: 'toast',
+            level: 'warn',
+            message: 'That attachment is no longer available -- fetch the ticket again.',
+          });
+          return;
+        }
+        this.post({
+          type: 'jiraChunkContentUpdated',
+          chunkId: message.chunkId,
+          charCount: this.jiraContext.currentContent(message.chunkId).length,
+        });
+        return;
+      }
+
+      case 'saveFeatureFile':
+        await this.handleSaveFeatureFile(message);
+        return;
+
       default:
         return;
     }
@@ -356,6 +396,148 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       const kind = error instanceof ServiceNowApiError ? error.kind : null;
       const prefix = kind === 'timeout' ? 'Timed out: ' : kind === 'auth' ? 'Authentication failed: ' : '';
       this.post({ type: 'incidentSearchError', message: `${prefix}${toMessage(error)}` });
+    }
+  }
+
+  /**
+   * Fetches a Jira story ticket, splits its Acceptance Criteria into
+   * segments, expands any linked ticket (single level -- see
+   * findLinkedTicketKeys), downloads and parses csv/xlsx/docx attachments
+   * (images ignored, flagged), and stores it all in JiraContextStore as a
+   * list of selectable chunks -- only metadata (id/label/kind/charCount)
+   * goes to the webview, never the actual content.
+   */
+  private async handleJiraFetchTicket(
+    message: Extract<WebviewMessage, { type: 'jiraFetchTicket' }>
+  ): Promise<void> {
+    try {
+      const baseUrl = JIRA_SITE_BASE_URLS[message.site];
+      const creds = { username: message.username, password: message.password };
+      const timeoutMs = vscode.workspace.getConfiguration('arsimTdsQe').get<number>('jiraApiTimeoutMs', 30000);
+      const key = extractJiraKey(message.ticketUrl);
+
+      const issue = await fetchJiraIssue(key, baseUrl, creds, timeoutMs);
+      const summary = issue.fields.summary || key;
+      const chunks: JiraChunkEntry[] = [];
+
+      const renderedOrRaw = (rendered: string | null | undefined, raw: string | null | undefined): string =>
+        rendered ? flattenJiraHtml(rendered) : raw || '';
+
+      const descriptionText = renderedOrRaw(issue.renderedFields?.description, issue.fields.description);
+      if (descriptionText.trim()) {
+        chunks.push({ id: `${key}-description`, label: `${key} Description`, kind: 'description', content: descriptionText });
+      }
+
+      const acText = renderedOrRaw(issue.renderedFields?.customfield_14400, issue.fields.customfield_14400);
+      splitAcceptanceCriteria(acText).forEach((seg, i) => {
+        chunks.push({ id: `${key}-ac-${i}`, label: `${key} ${seg.label}`, kind: 'ac', content: seg.content });
+      });
+
+      // Single-level linked-ticket expansion: a link found in AC/description
+      // gets fetched once; that linked ticket's own text is not scanned
+      // again, so this can never recurse or run away.
+      for (const linkedKey of findLinkedTicketKeys(`${descriptionText}\n${acText}`, key)) {
+        try {
+          const linked = await fetchJiraIssue(linkedKey, baseUrl, creds, timeoutMs);
+          const linkedDesc = renderedOrRaw(linked.renderedFields?.description, linked.fields.description);
+          const linkedAc = renderedOrRaw(linked.renderedFields?.customfield_14400, linked.fields.customfield_14400);
+          const combined = [
+            linked.fields.summary ? `Summary: ${linked.fields.summary}` : '',
+            linkedDesc ? `Description:\n${linkedDesc}` : '',
+            linkedAc ? `Acceptance Criteria:\n${linkedAc}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n\n');
+          if (combined.trim()) {
+            chunks.push({ id: `${linkedKey}-linked`, label: `Linked ticket ${linkedKey}`, kind: 'linked-ticket', content: combined });
+          }
+        } catch {
+          // A linked ticket that can't be fetched (wrong host, no access,
+          // deleted) is supplementary context, not required -- skip it
+          // rather than failing the whole fetch.
+        }
+      }
+
+      // Attachments: only the latest upload per filename, csv/xlsx/docx
+      // only (reusing the exact same parseFile() the Browse-file feature
+      // uses), images ignored but flagged to the user.
+      const latestByName = new Map<string, JiraAttachmentRaw>();
+      for (const att of issue.fields.attachment || []) {
+        const existing = latestByName.get(att.filename);
+        if (!existing || new Date(att.created).getTime() > new Date(existing.created).getTime()) {
+          latestByName.set(att.filename, att);
+        }
+      }
+      const ignoredImages: string[] = [];
+      for (const att of latestByName.values()) {
+        const kind = detectKind(att.filename);
+        if (kind !== 'csv' && kind !== 'xlsx' && kind !== 'docx') {
+          if (/\.(png|jpe?g|gif|bmp|svg|webp)$/i.test(att.filename)) ignoredImages.push(att.filename);
+          continue;
+        }
+        try {
+          const buffer = await fetchJiraAttachment(att.content, creds, timeoutMs);
+          const attachmentId = `${key}-att-${att.id}`;
+          const { parsed, meta } = await parseFile(buffer, att.filename, attachmentId);
+          chunks.push({ id: attachmentId, label: `Attachment: ${att.filename}`, kind: 'attachment', parsed, meta });
+        } catch (error) {
+          this.post({
+            type: 'toast',
+            level: 'warn',
+            message: `Could not read attachment "${att.filename}": ${toMessage(error)}`,
+          });
+        }
+      }
+
+      this.jiraContext.reset(chunks);
+
+      const chunkMetas: JiraChunkMeta[] = chunks.map((c) => ({
+        id: c.id,
+        label: c.label,
+        kind: c.kind,
+        charCount: this.jiraContext.currentContent(c.id).length,
+        attachmentMeta: c.meta,
+      }));
+
+      this.post({ type: 'jiraTicketFetched', ticketKey: key, summary, chunks: chunkMetas });
+      if (ignoredImages.length > 0) {
+        this.post({
+          type: 'toast',
+          level: 'info',
+          message: `${ignoredImages.length} image attachment(s) detected and ignored: ${ignoredImages.join(', ')}`,
+        });
+      }
+    } catch (error) {
+      const kind = error instanceof JiraApiError ? error.kind : null;
+      const prefix = kind === 'timeout' ? 'Timed out: ' : kind === 'auth' ? 'Authentication failed: ' : '';
+      this.post({ type: 'jiraTicketError', message: `${prefix}${toMessage(error)}` });
+    }
+  }
+
+  private async handleSaveFeatureFile(
+    message: Extract<WebviewMessage, { type: 'saveFeatureFile' }>
+  ): Promise<void> {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    if (!root) {
+      this.post({ type: 'featureFileSaveError', message: 'Open a workspace folder before saving the feature file.' });
+      return;
+    }
+    try {
+      const rawName = (message.fileNameHint.trim() || 'feature').replace(/\s+/g, '_').replace(/[\\/:*?"<>|]/g, '');
+      const fileName = rawName.toLowerCase().endsWith('.feature') ? rawName : `${rawName}.feature`;
+      const relDir = message.relativePath.trim().replace(/^[/\\]+/, '');
+      const dirUri = relDir ? vscode.Uri.joinPath(root.uri, relDir) : root.uri;
+      await vscode.workspace.fs.createDirectory(dirUri);
+
+      const fileUri = vscode.Uri.joinPath(dirUri, fileName);
+      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(message.content, 'utf-8'));
+
+      const doc = await vscode.workspace.openTextDocument(fileUri);
+      await vscode.window.showTextDocument(doc, { preview: false });
+
+      this.post({ type: 'featureFileSaved', path: vscode.workspace.asRelativePath(fileUri, false) });
+    } catch (error) {
+      this.post({ type: 'featureFileSaveError', message: toMessage(error) });
     }
   }
 
@@ -433,6 +615,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       const attachedFile = message.attachedFileId
         ? this.buildAttachedFilePayload(message.attachedFileId)
         : null;
+      const jiraChunks = message.jiraChunkIds ? this.jiraContext.contentFor(message.jiraChunkIds) : undefined;
 
       const { summary, promptTokens } = await buildContext({
         workflow,
@@ -441,6 +624,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         selectedInstructions: message.selectedInstructions,
         selectedPromptFile: message.selectedPromptFile,
         attachedFile,
+        jiraChunks,
         modelMaxInputTokens: maxTokens,
         countTokens: (text) => countTokens(model, vscode.LanguageModelChatMessage.User(text)),
       });
@@ -484,6 +668,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       const attachedFile = message.attachedFileId
         ? this.buildAttachedFilePayload(message.attachedFileId)
         : null;
+      const jiraChunks = message.jiraChunkIds ? this.jiraContext.contentFor(message.jiraChunkIds) : undefined;
 
       // The context budget (and, when possible, the exact token count
       // reported below) is derived from *this* model's real
@@ -499,6 +684,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         selectedInstructions: message.selectedInstructions,
         selectedPromptFile: message.selectedPromptFile,
         attachedFile,
+        jiraChunks,
         modelMaxInputTokens: maxInputTokens,
         countTokens: (text) => countTokens(model, vscode.LanguageModelChatMessage.User(text), cts.token),
       });
