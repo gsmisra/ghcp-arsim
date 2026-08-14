@@ -227,7 +227,7 @@
       : null;
 
     body.innerHTML = `
-      ${cardHtml('chat', 'Chat', state.chatEntries.length, chatCardBodyHtml())}
+      ${cardHtml('chat', 'Chat', realChatEntries().length, chatCardBodyHtml())}
     `;
     wireBody();
 
@@ -325,10 +325,26 @@
     if (thread) thread.scrollTop = thread.scrollHeight;
   }
 
+  /** Real (non-local) exchanges only -- state.chatEntries also holds the
+   *  Generate Feature File From Jira Story wizard's bot/user bubbles
+   *  (entry.local: true), which aren't "exchanges" in the request/
+   *  response sense and don't have requestText/responseText at all. */
+  function realChatEntries() {
+    return state.chatEntries.filter((e) => !e.local);
+  }
+
+  /** Most recent real exchange, skipping past any wizard bubbles pushed
+   *  after it (e.g. the "enter a save path" prompt) -- used when a wizard
+   *  step needs the just-generated response text. */
+  function lastRealChatEntry() {
+    const entries = realChatEntries();
+    return entries.length ? entries[entries.length - 1] : null;
+  }
+
   /** Plain-text rendering of the whole conversation, e.g. for clipboard
    *  export -- one "You: ... / Copilot: ..." block per exchange, in order. */
   function allChatAsText() {
-    return state.chatEntries
+    return realChatEntries()
       .map((e) => {
         const lines = [`[${formatChatTimestamp(e.timestamp)}] You: ${e.requestText}`];
         if (e.error) {
@@ -345,7 +361,7 @@
    *  a user gesture; the execCommand fallback covers any restricted
    *  environment where the async Clipboard API is unavailable. */
   function copyResponseToClipboard() {
-    if (!state.chatEntries.length) return;
+    if (!realChatEntries().length) return;
     const text = allChatAsText();
     const fallback = () => {
       const ta = document.createElement('textarea');
@@ -507,13 +523,24 @@
    */
   function chatCardBodyHtml() {
     const hasEntries = state.chatEntries.length > 0;
+    const realCount = realChatEntries().length;
+    // "N exchanges" counts real request/response pairs only -- the Jira
+    // wizard's own bot/user bubbles share this same array (see
+    // pushJiraBotText() etc.) but aren't "exchanges" in that sense. While
+    // only wizard chatter exists (no real exchange yet), say so instead of
+    // showing "0 exchanges", which would read as if nothing were happening.
+    const toolbarLabel = !hasEntries
+      ? 'No messages yet'
+      : realCount > 0
+      ? `${realCount} exchange${realCount === 1 ? '' : 's'} this session`
+      : 'Conversation in progress…';
     const threadClasses = 'response-panel chat-panel' + (hasEntries ? '' : ' empty-thread');
     return `
       <div class="field-label-row chat-toolbar">
-        <span class="hint">${hasEntries ? `${state.chatEntries.length} exchange${state.chatEntries.length === 1 ? '' : 's'} this session` : 'No messages yet'}</span>
-        <button class="icon-btn small" id="copy-response-btn" title="Copy full conversation" aria-label="Copy conversation" ${hasEntries ? '' : 'disabled'}>${copyIcon()}</button>
+        <span class="hint">${toolbarLabel}</span>
+        <button class="icon-btn small" id="copy-response-btn" title="Copy full conversation" aria-label="Copy conversation" ${realCount > 0 ? '' : 'disabled'}>${copyIcon()}</button>
       </div>
-      <div class="${threadClasses}" id="chat-thread">${jiraWizardLogHtml()}${chatThreadHtml()}${suggestedChipsHtml()}</div>
+      <div class="${threadClasses}" id="chat-thread">${chatThreadHtml()}${suggestedChipsHtml()}</div>
       <div class="field compose-field">
         ${workflowModelStatusHtml()}
         <div class="compose-input-row">
@@ -604,7 +631,13 @@
    *  runs on send, on the first chunk of a reply, and on completion/error. */
   function chatThreadHtml() {
     if (!state.chatEntries.length) return '';
-    return state.chatEntries.map(chatEntryHtml).join('');
+    // A chatEntries item is either a real request/response exchange or a
+    // local wizard bot/user bubble (Generate Feature File From Jira Story)
+    // -- both live in the same array, in true chronological insertion
+    // order, so the two kinds interleave correctly (e.g. the "analyze a
+    // new story?" bubble always ends up below the feature file it follows,
+    // never pinned above the whole thread).
+    return state.chatEntries.map((entry) => (entry.local ? jiraLogEntryHtml(entry) : chatEntryHtml(entry))).join('');
   }
 
   function chatEntryHtml(entry) {
@@ -1028,9 +1061,10 @@
   // later the save path) is collected as a conversation inside the chat
   // itself: a bot bubble poses each question, the user answers by clicking
   // a bubble option or typing in the normal compose box, and the answer is
-  // echoed back as an outgoing bubble -- see jiraWizardLogHtml() for how
-  // this renders and onSend()/handleJiraWizardAnswer() for how a typed
-  // answer gets routed here instead of to the LLM.
+  // echoed back as an outgoing bubble -- see jiraLogEntryHtml()/
+  // chatThreadHtml() for how these render inline with the real chat
+  // entries and onSend()/handleJiraWizardAnswer() for how a typed answer
+  // gets routed here instead of to the LLM.
 
   function createEmptyJiraWizard() {
     return {
@@ -1049,28 +1083,40 @@
       chunks: [], // JiraChunkMeta[] from the host (metadata only, never content)
       selectedChunkIds: new Set(),
       attachmentSelectionDrafts: {}, // chunkId -> working FileSelection, mirrors fileSelectionDraft
-      log: [], // { id, kind: 'bot-text'|'bot-options'|'user-text', text, options?, answered? }
       pendingRequestId: null, // the sendPrompt requestId this wizard is waiting on, if any
       controlPanelOpen: false,
       controlPanelChunkId: null, // set when reviewing one attachment's own range controls
     };
   }
 
+  // Wizard bot/user bubbles are pushed directly into state.chatEntries
+  // (marked local: true) rather than a separate array -- that's what
+  // makes them render in true chronological order alongside the real
+  // request/response exchanges via the single chatThreadHtml() loop,
+  // instead of always appearing above the whole thread as a fixed block
+  // regardless of when they actually happened.
   function pushJiraBotText(text) {
-    state.jiraWizard.log.push({ id: uid(), kind: 'bot-text', text });
+    state.chatEntries.push({ id: uid(), timestamp: new Date().toISOString(), local: true, kind: 'bot-text', text });
   }
   function pushJiraBotOptions(text, options) {
-    state.jiraWizard.log.push({ id: uid(), kind: 'bot-options', text, options, answered: false });
+    state.chatEntries.push({
+      id: uid(),
+      timestamp: new Date().toISOString(),
+      local: true,
+      kind: 'bot-options',
+      text,
+      options,
+      answered: false,
+    });
   }
   function pushJiraUserEcho(text) {
-    state.jiraWizard.log.push({ id: uid(), kind: 'user-text', text });
+    state.chatEntries.push({ id: uid(), timestamp: new Date().toISOString(), local: true, kind: 'user-text', text });
   }
 
   /** Starts (or restarts, for "Analyze another ticket") the setup
    *  conversation. Site is always asked again -- only username/password
    *  are skipped once already known, per spec. */
   function startJiraWizard() {
-    state.jiraWizard.log = [];
     state.jiraWizard.chunks = [];
     state.jiraWizard.selectedChunkIds = new Set();
     state.jiraWizard.attachmentSelectionDrafts = {};
@@ -1098,7 +1144,7 @@
   }
 
   function onJiraWizardOptionClick(entryId, optionIndex) {
-    const entry = state.jiraWizard.log.find((e) => e.id === entryId);
+    const entry = state.chatEntries.find((e) => e.id === entryId);
     if (!entry || entry.kind !== 'bot-options' || entry.answered) return;
     const option = entry.options[optionIndex];
     entry.answered = true;
@@ -1126,6 +1172,7 @@
       }
     }
     renderBody();
+    scrollChatToBottom();
   }
 
   /** Routes a typed answer for the current free-text wizard step -- called
@@ -1163,9 +1210,12 @@
         ticketUrl: text,
       });
     } else if (step === 'savePath') {
+      // The just-generated feature file, skipping past any wizard bubbles
+      // (e.g. this very "enter a save path" prompt) that were pushed into
+      // the same chatEntries array after it -- NOT simply "the last entry",
+      // which by now would be this step's own bot-text prompt.
+      const content = lastRealChatEntry() ? lastRealChatEntry().responseText : '';
       pushJiraUserEcho(text || '(workspace root)');
-      const lastEntry = state.chatEntries[state.chatEntries.length - 1];
-      const content = lastEntry ? lastEntry.responseText : '';
       post({
         type: 'saveFeatureFile',
         relativePath: text,
@@ -1177,6 +1227,7 @@
 
     state.userText = '';
     renderBody();
+    scrollChatToBottom();
   }
 
   /** Fires the real LLM request -- no free-text question needed, the
@@ -1198,6 +1249,7 @@
       ]);
       state.jiraWizard.step = 'ready';
       renderBody();
+      scrollChatToBottom();
       return;
     }
 
@@ -1210,17 +1262,11 @@
     state.jiraWizard.pendingRequestId = state.requestId;
   }
 
-  /** The setup conversation, rendered with the exact same chat-bubble
-   *  markup as everything else (zero new bubble CSS needed) -- shown above
-   *  the permanent chatEntries thread. Resets each "round" (see
-   *  startJiraWizard) rather than accumulating forever; completed feature-
-   *  file generations stay in chatEntries permanently like any other
-   *  exchange. */
-  function jiraWizardLogHtml() {
-    if (!isJiraWorkflow() || state.jiraWizard.log.length === 0) return '';
-    return state.jiraWizard.log.map(jiraLogEntryHtml).join('');
-  }
-
+  /** Renders one wizard bot/user bubble -- exact same chat-bubble markup
+   *  as a real exchange (zero new bubble CSS needed). Called from
+   *  chatThreadHtml() for any chatEntries item with local: true, so these
+   *  interleave in true chronological order with the real request/
+   *  response exchanges instead of being grouped into their own block. */
   function jiraLogEntryHtml(entry) {
     if (entry.kind === 'user-text') {
       return `
@@ -2784,6 +2830,7 @@
         ]);
         state.jiraWizard.step = 'ready';
         renderBody();
+        scrollChatToBottom();
         scheduleContextEstimate();
         break;
       }
@@ -2792,6 +2839,7 @@
         pushJiraBotText(`Could not fetch that ticket: ${msg.message} Enter a different URL/ticket key to try again.`);
         state.jiraWizard.step = 'ticketUrl';
         renderBody();
+        scrollChatToBottom();
         break;
 
       case 'jiraChunkContentUpdated': {
@@ -2810,12 +2858,14 @@
         ]);
         state.jiraWizard.step = 'done';
         renderBody();
+        scrollChatToBottom();
         break;
 
       case 'featureFileSaveError':
         pushJiraBotText(`Could not save the file: ${msg.message} Enter a different relative path.`);
         state.jiraWizard.step = 'savePath';
         renderBody();
+        scrollChatToBottom();
         break;
 
       case 'toast':

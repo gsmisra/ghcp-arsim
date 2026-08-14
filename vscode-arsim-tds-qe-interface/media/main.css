@@ -1124,7 +1124,14 @@ textarea.expanded {
    (distinct from the green chat-bubble tint) plus per-keyword coloring
    below, not just monospace text. */
 .code-block {
-  font-family: var(--vscode-editor-font-family, monospace);
+  /* JetBrains Mono if the user has it installed (a very common editor
+     font, especially among JetBrains/IntelliJ users) -- not bundled as a
+     web font here (would mean shipping a ~100KB+ binary font file plus
+     its license file, and loosening the webview CSP to allow font-src,
+     for what's a cosmetic preference). Degrades gracefully to the same
+     VS Code editor font used everywhere else in this UI if not present,
+     so nothing looks broken either way. */
+  font-family: 'JetBrains Mono', var(--vscode-editor-font-family, monospace), 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.5
+
+- **Generated .feature output now renders in JetBrains Mono** (falling back to the VS Code editor font if it isn't installed, then a generic monospace font -- no font file is bundled, so this is purely a preference, never a broken/missing-glyph risk).
+- **Substantially expanded the three Generate Feature File From Jira Story `.github/` files** (skill, instruction, prompt) to enterprise-banking depth:
+  - The Skill file now has a dedicated, parser-accurate section on reading attachment/embedded-table data: DOCX tables are tab-separated per row, XLSX sheets are comma-separated per sheet with `--- Sheet: name ---` delimiters and *displayed* (not raw) cell values, CSV is standard RFC-4180-style comma-separated -- with explicit guidance on reconstructing tables correctly, using them verbatim as `Examples:` data, and recognizing truncated attachment data instead of treating it as complete.
+  - Added a banking-domain scenario taxonomy (money movement, auth/authz, dual-control/maker-checker, batch/reconciliation, regulatory reporting/audit trail, data validation) to calibrate what to prioritize.
+  - The Instruction file gained deeper compliance rules: PII/synthetic-data handling, a hard rule against inventing regulatory citations, segregation-of-duties phrasing, audit-trail assertion phrasing, currency/precision/timezone preservation.
+  - The Prompt file's persona now carries specific tier-1 banking production-support/QA/BA background and explicit awareness of how attachment data reaches it, while keeping the actual parsing mechanics in the Skill file (no duplication between the three).
+  - These `.github/` files are read directly from the workspace, not bundled into the `.vsix` -- the changes are live immediately, no reinstall needed.
+
+## 0.11.4
+
+- **Fixed: the "Would you like to analyze a new story?" (and every other wizard) bubble appeared above the generated feature file instead of below it.** The wizard's bot/user bubbles were rendered as a separate block that always sat above the real chat thread, regardless of when they actually happened. They're now pushed directly into the same chronological entry list as the real request/response exchanges, so the latest bubble is always at the bottom and everything else is pushed up, exactly like a real chat.
+- Fixed a related bug this surfaced: saving the feature file could read the wrong "last entry" (the wizard's own "enter a save path" prompt instead of the actual generated file) once bubbles and exchanges shared one list -- fixed alongside the ordering change.
+- The "N exchanges this session" count, the Chat segment's badge, and "Copy full conversation" now correctly count/copy real exchanges only, not the wizard's own setup chatter.
+- The thread now auto-scrolls to the newest bubble after every wizard step, not just after a real response.
+
 ## 0.11.3
 
 - **Fixed: Acceptance Criteria field id is per-instance, not universal.** `jtmf.td.com` uses `customfield_10200` for Acceptance Criteria; `track.td.com` uses `customfield_14400`. The workflow was hardcoded to `customfield_14400` for both sites, so a `jtmf.td.com` ticket's AC always came back empty (no AC chunks, nothing to build scenarios from) even though the fetch itself succeeded. Now the field id is resolved per the site chosen in the chat. Also added a log line reporting the resolved AC field and its character count for each fetch, so this is easy to confirm going forward (View > Output > "ARSIM TDS QE").
