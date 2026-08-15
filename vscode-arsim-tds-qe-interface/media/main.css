@@ -964,6 +964,16 @@ textarea.expanded {
   text-decoration: underline;
 }
 
+/* Marks a Skill/Instruction/Prompt that ships inside the extension itself
+   (resources/seed-github/) rather than the open workspace's .github/
+   folder -- editing one and saving creates a workspace copy that takes
+   over from then on, so this is just a heads-up, not a restriction. */
+.builtin-badge {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 400;
+  font-size: 11.5px;
+}
+
 /* ---------- Chat thread height (main view shows only the Chat card) ----------
    The thread is a fixed 70% of viewport height with its own scrollbar --
    a real chat app's message list, not a region that grows to "whatever

@@ -2,12 +2,14 @@ import * as vscode from 'vscode';
 import { MainViewProvider } from './panels/MainViewProvider';
 import { forgetServiceNowPassword } from './serviceNow/serviceNowCredentials';
 import { initLogger, log, showLogs } from './logging/log';
+import { initFileDiscovery } from './github/fileDiscovery';
 
 let activeProvider: MainViewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   initLogger(context);
   log('Extension activated.');
+  initFileDiscovery(context.extensionUri);
 
   const provider = new MainViewProvider(context);
   activeProvider = provider;

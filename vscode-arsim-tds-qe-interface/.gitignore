@@ -4,3 +4,7 @@ out/
 dist-vsix/
 *.vsix
 *.tsbuildinfo
+# Regenerated fresh from ../.github/{skills,instructions,prompts} on every
+# build (see esbuild.js's copySeedGithubContent()) -- the repo-root
+# .github/ folder is the source of truth, not this copy.
+resources/seed-github/

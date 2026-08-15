@@ -435,13 +435,19 @@
       return `<div class="empty-hint">${esc(emptyText)}</div>`;
     }
     const rows = files
-      .map(
-        (f) => `
+      .map((f) => {
+        // Ships inside the extension itself (resources/seed-github/) --
+        // editing one and clicking Save creates a workspace copy that
+        // then takes over from the built-in version for the rest of the
+        // session (see fileDiscovery.ts). The badge is just so that isn't
+        // a surprise the first time.
+        const builtInBadge = f.source === 'bundled' ? ' <span class="builtin-badge">(built-in)</span>' : '';
+        return `
         <label class="check-row">
           <input type="checkbox" data-kind="${kind}" data-path="${esc(f.relativePath)}" ${selectedSet.has(f.relativePath) ? 'checked' : ''} />
-          <button type="button" class="check-row-name" data-open-kind="${kind}" data-open-path="${esc(f.relativePath)}" title="View / edit ${esc(f.relativePath)}">${esc(f.fileName)}</button>
-        </label>`
-      )
+          <button type="button" class="check-row-name" data-open-kind="${kind}" data-open-path="${esc(f.relativePath)}" title="View / edit ${esc(f.relativePath)}">${esc(f.fileName)}${builtInBadge}</button>
+        </label>`;
+      })
       .join('');
     return `<div class="checklist">${rows}</div>${managedFileEditorHtml(kind)}`;
   }
@@ -481,7 +487,12 @@
   function promptsBodyHtml() {
     const options =
       `<option value="">— Select a prompt file —</option>` +
-      state.prompts.map((p) => `<option value="${esc(p.relativePath)}" ${state.selectedPromptFile && state.selectedPromptFile.relativePath === p.relativePath ? 'selected' : ''}>${esc(p.fileName)}</option>`).join('');
+      state.prompts
+        .map(
+          (p) =>
+            `<option value="${esc(p.relativePath)}" ${state.selectedPromptFile && state.selectedPromptFile.relativePath === p.relativePath ? 'selected' : ''}>${esc(p.fileName)}${p.source === 'bundled' ? ' (built-in)' : ''}</option>`
+        )
+        .join('');
 
     const editor = state.selectedPromptFile
       ? `

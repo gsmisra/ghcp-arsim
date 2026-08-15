@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0
+
+- **The `.vsix` is now a self-contained product.** Every Skills/Instructions/Custom Prompts file currently authored in this repo's `.github/{skills,instructions,prompts}/` -- including the PROD Incident Analysis and Generate Feature File From Jira Story seed content -- is now bundled directly inside the packaged extension and shows up immediately in any workspace, even one with no `.github/` folder of its own, or with no workspace open at all.
+- The build (`esbuild.js`, so this applies to every one of the three build scripts) copies the current seed content into `resources/seed-github/` fresh on every build, which `vsce package` then bundles into the `.vsix` automatically.
+- A workspace's own `.github/{skills,instructions,prompts}/` files still work exactly as before, and now **take precedence** over a same-named bundled file -- editing a built-in item and clicking Save creates a workspace copy that shadows the built-in version from then on, so nothing about the existing edit/save workflow changed.
+- Built-in entries are labeled `(built-in)` in Settings so it's clear which ones ship with the extension vs. come from your workspace.
+
 ## 0.11.5
 
 - **Generated .feature output now renders in JetBrains Mono** (falling back to the VS Code editor font if it isn't installed, then a generic monospace font -- no font file is bundled, so this is purely a preference, never a broken/missing-glyph risk).

@@ -94,10 +94,21 @@ export type GithubFileKind = 'skill' | 'instruction' | 'prompt';
 
 export interface GithubFileRef {
   kind: GithubFileKind;
-  /** Workspace-relative path, e.g. .github/skills/api-contract-review.md */
+  /** Relative path, e.g. .github/skills/api-contract-review.md for a
+   *  workspace file, or skills/prod-incident-analysis.skill.md (relative
+   *  to the extension's own bundled resources/seed-github/) for a
+   *  built-in one -- see `source`. */
   relativePath: string;
   /** File name only, shown in the UI list. */
   fileName: string;
+  /** 'workspace' (default when omitted, for backward compatibility) reads
+   *  from the open workspace's .github/ folder, same as always.
+   *  'bundled' reads from this extension's own packaged seed content
+   *  (resources/seed-github/), available even with no matching workspace
+   *  file or no workspace open at all -- see fileDiscovery.ts. Editing a
+   *  bundled file and saving always writes to the workspace, which then
+   *  shadows the bundled copy from then on. */
+  source?: 'workspace' | 'bundled';
 }
 
 export interface GithubFileContent extends GithubFileRef {
