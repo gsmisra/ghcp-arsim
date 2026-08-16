@@ -151,7 +151,10 @@
           "description": "Timeout (ms) for a Jira ticket/attachment fetch request (Generate Feature File From Jira Story) before it's treated as failed."
         },
         "arsimTdsQe.confluenceMaxDepth": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "default": null,
           "minimum": 0,
           "maximum": 10,
