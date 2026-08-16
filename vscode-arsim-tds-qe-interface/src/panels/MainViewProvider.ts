@@ -11,7 +11,14 @@ import {
   writeGithubFile,
 } from '../github/fileDiscovery';
 import { buildContext } from '../github/contextBuilder';
-import { countTokens, listModels, resolveModel, sendChat, testConnection } from '../copilot/copilotClient';
+import {
+  countTokens,
+  getModelUid,
+  listModels,
+  orderedCandidateModels,
+  sendChatWithFallback,
+  testConnection,
+} from '../copilot/copilotClient';
 import { TokenHistoryStore } from '../telemetry/tokenHistoryStore';
 import { exportTokenHistoryToDownloads } from '../telemetry/csvExport';
 import { promptForAdminPassword } from '../security/adminAuth';
@@ -37,11 +44,32 @@ import {
   JIRA_SITE_BASE_URLS,
   ACCEPTANCE_CRITERIA_FIELD_BY_SITE,
 } from '../jira/jiraClient';
-import { flattenJiraHtml } from '../jira/htmlFlatten';
+import { flattenHtml } from '../common/htmlFlatten';
 import { splitAcceptanceCriteria } from '../jira/acSplitter';
 import { JiraContextStore, JiraChunkEntry } from '../jira/jiraContextStore';
 import { detectKind } from '../fileIngest/detect';
 import { log, logError } from '../logging/log';
+import { KnowledgeBaseStore } from '../knowledgeBase/knowledgeBaseStore';
+import { retrieve, warmIndexes } from '../rag/retriever';
+import { sliceParsedFile } from '../fileIngest/slice';
+import {
+  parseConfluenceUrl,
+  resolvePageId,
+  fetchPage as fetchConfluencePage,
+  fetchChildPages as fetchConfluenceChildPages,
+  fetchAttachments as fetchConfluenceAttachments,
+  downloadAttachment as downloadConfluenceAttachment,
+  ConfluenceApiError,
+} from '../confluence/confluenceClient';
+import {
+  getOrPromptConfluenceCredentials,
+  getOrPromptJiraCredentialsForImport,
+  getConfluenceMaxDepth,
+  getConfluenceMaxPages,
+  getConfluenceTimeoutMs,
+  getJiraImportTimeoutMs,
+} from '../confluence/confluenceCredentials';
+import { importConfluenceTree, ConfluenceImportPorts } from '../confluence/confluenceImporter';
 
 const TOKEN_SESSION_STATE_KEY = 'arsimTdsQe.tokenSession';
 const EMPTY_SESSION_TOTALS: SessionTokenTotals = {
@@ -77,6 +105,17 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   private readonly tokenHistory: TokenHistoryStore;
   private readonly attachedFiles = new AttachedFilesStore();
   private readonly jiraContext = new JiraContextStore();
+  private readonly knowledgeBases: KnowledgeBaseStore;
+  /** Set the moment a real send confirms a model actually responds (see
+   *  handleSendPrompt's use of sendChatWithFallback). Preferred over
+   *  whatever the webview's default-selected model is for every
+   *  *estimate* call afterwards -- the estimate path never itself
+   *  retries with a fallback model (it must stay fast/side-effect-free),
+   *  so once the send path has proven which model genuinely works this
+   *  session, reusing it is what stops the Context Limit meter from
+   *  repeatedly stalling against a model that's already known to not
+   *  respond. */
+  private lastWorkingModelUid: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.sessionTotals = context.globalState.get<SessionTokenTotals>(
@@ -84,6 +123,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       EMPTY_SESSION_TOTALS
     );
     this.tokenHistory = new TokenHistoryStore(context);
+    this.knowledgeBases = new KnowledgeBaseStore(context);
   }
 
   /** Called from `deactivate()` as a last-chance, best-effort persistence flush. */
@@ -140,6 +180,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         });
         await this.sendFileLists();
         await this.sendModels();
+        await this.sendKnowledgeBases();
         this.post({ type: 'tokenSession', session: this.sessionTotals });
         // Warm the history cache now so the "Token Usage History" link
         // opens instantly later instead of paying a disk read on first click.
@@ -347,9 +388,297 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         await this.handleSaveFeatureFile(message);
         return;
 
+      case 'listKnowledgeBases':
+        await this.sendKnowledgeBases();
+        return;
+
+      case 'createKnowledgeBase': {
+        try {
+          const kb = await this.knowledgeBases.create(message.tier, message.name, message.description);
+          log(`Knowledge base created: ${kb.id}`);
+          await this.sendKnowledgeBases();
+          this.post({ type: 'toast', level: 'info', message: `Created knowledge base "${kb.name}".` });
+        } catch (error) {
+          logError('Creating the knowledge base failed', error);
+          this.post({ type: 'knowledgeBaseError', message: toMessage(error) });
+        }
+        return;
+      }
+
+      case 'deleteKnowledgeBase': {
+        try {
+          await this.knowledgeBases.delete(message.knowledgeBaseId);
+          log(`Knowledge base deleted: ${message.knowledgeBaseId}`);
+          await this.sendKnowledgeBases();
+        } catch (error) {
+          logError('Deleting the knowledge base failed', error);
+          this.post({ type: 'knowledgeBaseError', message: toMessage(error) });
+        }
+        return;
+      }
+
+      case 'importKnowledgeBaseDocument':
+        await this.handleImportKnowledgeBaseDocument(message);
+        return;
+
+      case 'importConfluencePage':
+        await this.handleImportConfluencePage(message);
+        return;
+
+      case 'removeKnowledgeBaseDocument': {
+        try {
+          await this.knowledgeBases.removeDocument(message.knowledgeBaseId, message.documentId);
+          await this.sendKnowledgeBases();
+        } catch (error) {
+          logError('Removing the knowledge-base document failed', error);
+          this.post({ type: 'knowledgeBaseError', message: toMessage(error) });
+        }
+        return;
+      }
+
       default:
         return;
     }
+  }
+
+  private async sendKnowledgeBases(): Promise<void> {
+    await this.knowledgeBases.refresh();
+    this.post({ type: 'knowledgeBases', knowledgeBases: this.knowledgeBases.listMeta() });
+  }
+
+  /**
+   * Imports a document into a knowledge base by reusing the exact same
+   * parsing pipeline the Browse-to-attach feature uses (parseFile +
+   * sliceParsedFile) -- so docx/pdf/csv/xlsx/text all become indexable
+   * plain text with no new parsing code, and any format the extension can
+   * already read is automatically supported here too.
+   */
+  private async handleImportKnowledgeBaseDocument(
+    message: Extract<WebviewMessage, { type: 'importKnowledgeBaseDocument' }>
+  ): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: 'Add to Knowledge Base',
+      filters: {
+        'Supported documents': ['md', 'txt', 'docx', 'pdf', 'csv', 'xlsx', 'xls', 'log', 'json'],
+        'All files': ['*'],
+      },
+    });
+    if (!picked || picked.length === 0) return; // cancelled -- not an error
+
+    this.post({ type: 'knowledgeBaseImporting' });
+    try {
+      const uri = picked[0];
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const fileName = uri.path.split('/').pop() || 'document';
+
+      const { parsed } = await parseFile(buffer, fileName, generateFileId());
+      // Empty selection = the whole document, which is what we want when
+      // indexing: retrieval decides relevance later, per query.
+      const text = sliceParsedFile(parsed, {});
+
+      const doc = await this.knowledgeBases.addDocument(
+        message.knowledgeBaseId,
+        fileName,
+        text,
+        vscode.workspace.asRelativePath(uri, false)
+      );
+      log(`Knowledge base document added: ${fileName} (${text.length} chars) -> ${message.knowledgeBaseId}`);
+      await this.sendKnowledgeBases();
+      this.post({
+        type: 'toast',
+        level: 'info',
+        message: `Added "${doc.title}" (${text.length.toLocaleString()} chars) to the knowledge base.`,
+      });
+    } catch (error) {
+      logError('Importing the knowledge-base document failed', error);
+      this.post({ type: 'knowledgeBaseError', message: toMessage(error) });
+    }
+  }
+
+  /**
+   * Imports a Confluence page and its sub-page tree (default depth from
+   * __CONFLUENCE_MAX_DEPTH__, overridable via arsimTdsQe.confluenceMaxDepth),
+   * the latest version of every supported attachment on each page, and any
+   * jtmf.td.com/track.td.com Jira tickets linked from the pages -- one KB
+   * document per page/attachment/ticket, per the confirmed design, so
+   * retrieval can cite the specific sub-page or ticket rather than just the
+   * root. Jira credentials are only prompted for if a link is actually
+   * found (most Confluence pages have none), and only once per session.
+   */
+  private async handleImportConfluencePage(
+    message: Extract<WebviewMessage, { type: 'importConfluencePage' }>
+  ): Promise<void> {
+    const url = await vscode.window.showInputBox({
+      title: 'Import from Confluence',
+      prompt:
+        'Paste a Confluence page URL. Its sub-pages (up to the configured depth), attachments, and any linked Jira tickets will be imported.',
+      placeHolder: 'https://confluence.example.com/display/SPACE/Page+Title',
+      ignoreFocusOut: true,
+      validateInput: (v) => (v.trim() ? undefined : 'A Confluence page URL is required.'),
+    });
+    if (!url) return; // cancelled -- not an error
+
+    let parsed;
+    try {
+      parsed = parseConfluenceUrl(url);
+    } catch (error) {
+      this.post({ type: 'knowledgeBaseError', message: toMessage(error) });
+      return;
+    }
+
+    let confluenceCreds;
+    try {
+      confluenceCreds = await getOrPromptConfluenceCredentials(this.context);
+    } catch (error) {
+      this.post({ type: 'knowledgeBaseError', message: toMessage(error) });
+      return;
+    }
+
+    this.post({ type: 'knowledgeBaseImporting' });
+    const timeoutMs = getConfluenceTimeoutMs();
+    // Jira creds are prompted lazily (only if a link actually turns up)
+    // and cached for the rest of this one import.
+    let jiraCreds: { username: string; password: string } | undefined;
+
+    const cancellation = { cancelled: false };
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Importing from Confluence (${parsed.origin})`,
+          cancellable: true,
+        },
+        async (progress, token) => {
+          token.onCancellationRequested(() => {
+            cancellation.cancelled = true;
+          });
+
+          const rootPageId = await resolvePageId(parsed, confluenceCreds, timeoutMs);
+
+          const ports: ConfluenceImportPorts = {
+            fetchPage: (id) => fetchConfluencePage(parsed.apiBase, parsed.origin, id, confluenceCreds, timeoutMs),
+            fetchChildPages: (id) =>
+              fetchConfluenceChildPages(parsed.apiBase, parsed.origin, id, confluenceCreds, timeoutMs),
+            fetchAttachments: (id) =>
+              fetchConfluenceAttachments(parsed.apiBase, parsed.origin, id, confluenceCreds, timeoutMs),
+            downloadAttachment: (downloadUrl) => downloadConfluenceAttachment(downloadUrl, confluenceCreds, timeoutMs),
+            parseAttachmentText: async (buffer, fileName) => {
+              try {
+                const { parsed: parsedFile } = await parseFile(buffer, fileName, generateFileId());
+                return sliceParsedFile(parsedFile, {});
+              } catch (error) {
+                logError(`Could not parse Confluence attachment "${fileName}"`, error);
+                return null;
+              }
+            },
+            fetchJiraTicketText: async (site, key) => {
+              try {
+                if (!jiraCreds) jiraCreds = await getOrPromptJiraCredentialsForImport(this.context);
+                const baseUrl = JIRA_SITE_BASE_URLS[site];
+                const issue = await fetchJiraIssue(key, baseUrl, jiraCreds, getJiraImportTimeoutMs());
+                const acFieldKey = ACCEPTANCE_CRITERIA_FIELD_BY_SITE[site];
+                const rendered = issue.renderedFields?.[acFieldKey];
+                const ac =
+                  typeof rendered === 'string' && rendered
+                    ? flattenHtml(rendered)
+                    : typeof issue.fields[acFieldKey] === 'string'
+                      ? (issue.fields[acFieldKey] as string)
+                      : '';
+                const description =
+                  typeof issue.renderedFields?.description === 'string' && issue.renderedFields.description
+                    ? flattenHtml(issue.renderedFields.description)
+                    : issue.fields.description || '';
+                const text = [
+                  `Summary: ${issue.fields.summary}`,
+                  description ? `Description:\n${description}` : '',
+                  ac ? `Acceptance Criteria:\n${ac}` : '',
+                ]
+                  .filter(Boolean)
+                  .join('\n\n');
+                return { title: issue.fields.summary, text };
+              } catch (error) {
+                logError(`Linked Jira ticket ${site}:${key} could not be fetched, skipped`, error);
+                return null;
+              }
+            },
+            onProgress: (info) => {
+              progress.report({ message: info.message });
+              log(`Confluence import: ${info.message}`);
+            },
+            isCancelled: () => cancellation.cancelled,
+          };
+
+          const result = await importConfluenceTree(rootPageId, getConfluenceMaxDepth(), getConfluenceMaxPages(), ports);
+
+          for (const item of result.items) {
+            await this.knowledgeBases.addDocument(message.knowledgeBaseId, item.title, item.text, item.sourceRef);
+          }
+
+          const pageCount = result.items.filter((i) => i.kind === 'page').length;
+          log(
+            `Confluence import complete: ${pageCount} page(s), ${result.attachmentsFetched} attachment(s) ` +
+              `(${result.attachmentsSkipped} skipped), ${result.jiraTicketsFetched} Jira ticket(s)` +
+              `${result.stoppedEarly ? ' -- stopped early (page cap or cancelled)' : ''} -> ${message.knowledgeBaseId}`
+          );
+          await this.sendKnowledgeBases();
+
+          if (result.cancelled) {
+            this.post({ type: 'toast', level: 'warn', message: 'Confluence import cancelled.' });
+          } else {
+            this.post({
+              type: 'toast',
+              level: 'info',
+              message:
+                `Imported ${pageCount} page(s), ${result.attachmentsFetched} attachment(s), ` +
+                `${result.jiraTicketsFetched} Jira ticket(s) from Confluence.` +
+                (result.stoppedEarly ? ' Stopped early: page limit reached.' : ''),
+            });
+          }
+        }
+      );
+    } catch (error) {
+      logError('Confluence import failed', error);
+      const message2 =
+        error instanceof ConfluenceApiError ? error.message : toMessage(error);
+      this.post({ type: 'knowledgeBaseError', message: message2 });
+    } finally {
+      // knowledgeBaseImporting has no explicit "done" message -- the
+      // knowledgeBases refresh above (or the error path) is what clears
+      // state.kbImporting in the webview, mirroring the file-import path.
+      await this.sendKnowledgeBases();
+    }
+  }
+
+  /**
+   * Workflows whose whole point is "answer from whatever knowledge base
+   * material is relevant" auto-scan every knowledge base the user has --
+   * bundled, workspace, AND personal -- when they haven't narrowed the
+   * scope themselves, rather than silently retrieving nothing until a
+   * checkbox is ticked. An explicit selection (narrowing to just one or
+   * two KBs) is still honored; this only fills in the *default*.
+   * Deliberately NOT applied to workflows with their own dedicated context
+   * source (Jira, ServiceNow) -- those shouldn't have unrelated KB content
+   * injected by default.
+   */
+  private static readonly AUTO_SCAN_ALL_WORKFLOWS = new Set(['generic', 'knowledge-base-qa']);
+
+  /** Resolves which knowledge bases a request should actually search:
+   *  the user's explicit selection when there is one, otherwise every
+   *  knowledge base that currently exists (for the workflows above). */
+  private effectiveKnowledgeBaseIds(workflowId: string, selected: string[] | null | undefined): string[] {
+    if (selected && selected.length > 0) return selected;
+    if (!MainViewProvider.AUTO_SCAN_ALL_WORKFLOWS.has(workflowId)) return [];
+    return this.knowledgeBases.getAll().map((kb) => kb.id);
+  }
+
+  /** Shared by send and estimate: retrieval is a no-op (returns []) when
+   *  no Knowledge Base is in scope, so every pre-RAG path is unaffected. */
+  private retrieveForRequest(knowledgeBaseIds: string[] | null | undefined, query: string) {
+    if (!knowledgeBaseIds || knowledgeBaseIds.length === 0) return undefined;
+    const chunks = retrieve(this.knowledgeBases, knowledgeBaseIds, query);
+    return chunks.length > 0 ? chunks : undefined;
   }
 
   /**
@@ -441,7 +770,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       const chunks: JiraChunkEntry[] = [];
 
       const renderedOrRaw = (rendered: unknown, raw: unknown): string => {
-        if (typeof rendered === 'string' && rendered) return flattenJiraHtml(rendered);
+        if (typeof rendered === 'string' && rendered) return flattenHtml(rendered);
         return typeof raw === 'string' ? raw : '';
       };
 
@@ -644,15 +973,34 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     try {
       const workflow = getWorkflow(message.workflowId);
-      const model = await resolveModel(message.modelUid);
+      // Prefer whichever model a real send already confirmed works this
+      // session (see handleSendPrompt) over the webview's default
+      // selection -- the estimate path itself never retries with a
+      // fallback model (it has to stay fast/side-effect-free), so without
+      // this, a session whose default model doesn't respond would have
+      // the Context Limit meter stall on every single keystroke pause
+      // even after the user's actual messages have been auto-recovering
+      // via a different model all along.
+      const model = (await orderedCandidateModels(this.lastWorkingModelUid ?? message.modelUid))[0];
       const maxTokens = typeof model.maxInputTokens === 'number' ? model.maxInputTokens : null;
 
       const attachedFile = message.attachedFileId
         ? this.buildAttachedFilePayload(message.attachedFileId)
         : null;
       const jiraChunks = message.jiraChunkIds ? this.jiraContext.contentFor(message.jiraChunkIds) : undefined;
+      // Build/refresh the BM25 index for every selected KB as soon as the
+      // selection is known -- this call fires the instant a KB checkbox is
+      // ticked (before any text is typed, since retrieve() below is a
+      // no-op on an empty query), so the one-time chunk/tokenize/index
+      // cost for a newly-selected KB (potentially a large
+      // Confluence-imported one) is paid here, off the path the user
+      // actually waits on, instead of silently inside their first real
+      // question.
+      const kbScope = this.effectiveKnowledgeBaseIds(workflow.id, message.selectedKnowledgeBaseIds);
+      warmIndexes(this.knowledgeBases, kbScope);
+      const retrievedChunks = this.retrieveForRequest(kbScope, message.userText);
 
-      const { summary, promptTokens } = await buildContext({
+      const { content, summary, promptTokens: computedPromptTokens } = await buildContext({
         workflow,
         userText: message.userText,
         selectedSkills: message.selectedSkills,
@@ -660,11 +1008,37 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         selectedPromptFile: message.selectedPromptFile,
         attachedFile,
         jiraChunks,
+        retrievedChunks,
         modelMaxInputTokens: maxTokens,
         countTokens: (text) => countTokens(model, vscode.LanguageModelChatMessage.User(text)),
       });
 
-      const usedTokens = promptTokens ?? 0;
+      // `computedPromptTokens` is legitimately null both when the model
+      // doesn't report maxInputTokens (buildContext's refinement pass
+      // never runs -- normal) and when the model call genuinely
+      // stalled/failed (contextBuilder's both-null guard -- see above).
+      // One fallback measurement distinguishes them: if THIS also comes
+      // back fully unmeasured, it's a real stall, not just a skipped
+      // refinement pass.
+      let promptTokens = computedPromptTokens;
+      if (promptTokens === null) {
+        const [systemTokens, contentTokens] = await Promise.all([
+          countTokens(model, vscode.LanguageModelChatMessage.User(workflow.systemPrompt)),
+          countTokens(model, vscode.LanguageModelChatMessage.User(content)),
+        ]);
+        if (systemTokens === null && contentTokens === null) {
+          // Genuinely couldn't measure -- reporting this as a confident
+          // 0% would be actively misleading (as if there's nothing to
+          // send), so leave the meter at whatever it last showed instead,
+          // exactly like the catch block below does for every other
+          // failure in this method.
+          log('Context estimation: token count unavailable (model call did not respond), meter left unchanged');
+          return;
+        }
+        promptTokens = (systemTokens ?? 0) + (contentTokens ?? 0);
+      }
+
+      const usedTokens = promptTokens;
       const exceeded = maxTokens !== null && usedTokens > maxTokens;
 
       this.post({
@@ -674,9 +1048,15 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         exceeded,
         lastLineIncluded: exceeded ? summary.attachedFileLastLine : null,
       });
-    } catch {
+    } catch (error) {
       // Context estimation is advisory-only UI feedback -- a failure here
-      // (e.g. no model selected yet) should never surface as an error toast.
+      // (e.g. no model selected yet, or a stalled vscode.lm call -- see
+      // withLmTimeout in copilotClient.ts) should never surface as an
+      // error toast. It must still be logged, though: silently swallowing
+      // this previously meant the Context Limit meter could get stuck at
+      // 0 with literally no trace of why anywhere -- not even in the
+      // Output channel -- making a real bug here undiagnosable.
+      logError('Context estimation failed (advisory only, not shown to user)', error);
     }
   }
 
@@ -699,12 +1079,32 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const workflow = getWorkflow(message.workflowId);
-      const model = await resolveModel(message.modelUid);
+      // Every candidate model in try order (the requested one first) --
+      // context is assembled once against candidates[0]'s budget below;
+      // if that specific model then turns out not to respond,
+      // sendChatWithFallback retries with the next one using the SAME
+      // assembled content, automatically, instead of leaving the request
+      // hanging until the user notices and switches models by hand.
+      const candidates = await orderedCandidateModels(message.modelUid);
+      const model = candidates[0];
       log(`sendPrompt: workflow=${workflow.id} model=${message.modelUid} requestId=${requestId}`);
       const attachedFile = message.attachedFileId
         ? this.buildAttachedFilePayload(message.attachedFileId)
         : null;
       const jiraChunks = message.jiraChunkIds ? this.jiraContext.contentFor(message.jiraChunkIds) : undefined;
+      // RAG: retrieve against the user's actual question. Runs for EVERY
+      // workflow (including generic chat) because this is the single
+      // shared send path. General Chat and Knowledge Base Q&A additionally
+      // default to searching EVERY knowledge base the user has (bundled +
+      // workspace + personal) when none is explicitly ticked -- see
+      // effectiveKnowledgeBaseIds() -- so asking a question doesn't
+      // silently retrieve nothing just because the user forgot to select
+      // one first. An explicit selection still narrows the scope.
+      const kbScope = this.effectiveKnowledgeBaseIds(workflow.id, message.selectedKnowledgeBaseIds);
+      const retrievedChunks = this.retrieveForRequest(kbScope, message.userText);
+      if (retrievedChunks) {
+        log(`RAG: retrieved ${retrievedChunks.length} chunk(s) from ${kbScope.length} knowledge base(s) (workflow=${workflow.id})`);
+      }
 
       // The context budget (and, when possible, the exact token count
       // reported below) is derived from *this* model's real
@@ -721,6 +1121,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         selectedPromptFile: message.selectedPromptFile,
         attachedFile,
         jiraChunks,
+        retrievedChunks,
         modelMaxInputTokens: maxInputTokens,
         countTokens: (text) => countTokens(model, vscode.LanguageModelChatMessage.User(text), cts.token),
       });
@@ -739,16 +1140,46 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
           ]);
           return (systemTokens ?? 0) + (contentTokens ?? 0);
         })());
+      // promptTokens is counted against candidates[0]'s tokenizer, before
+      // it's known whether that specific model will actually respond --
+      // recomputing it a second time against whichever model ends up
+      // responding (only when a fallback happened) would mean re-running
+      // buildContext's budgeting too, adding real latency to guard an
+      // edge case. The reported count can be a close-but-not-exact
+      // approximation on the rare request that needed a fallback; every
+      // other figure (completion tokens, the model name recorded in
+      // history) below reflects the model that actually responded.
       this.post({ type: 'promptTokenCounted', requestId, promptTokens });
 
       this.post({ type: 'streamStart', requestId });
 
-      const responseText = await sendChat(model, workflow.systemPrompt, content, {
+      const {
+        text: responseText,
+        model: respondingModel,
+        switched,
+      } = await sendChatWithFallback(candidates, workflow.systemPrompt, content, {
         token: cts.token,
         onChunk: (text) => this.post({ type: 'streamChunk', requestId, text }),
       });
 
-      const completionTokens = (await countTokens(model, responseText, cts.token)) ?? 0;
+      // A real response just confirmed which model actually works this
+      // session -- reuse it for every context-estimate call from now on
+      // (see handleEstimateContext) instead of repeatedly stalling
+      // against a default model already known not to respond.
+      this.lastWorkingModelUid = getModelUid(respondingModel);
+      if (switched) {
+        log(
+          `sendPrompt: model "${message.modelUid}" did not respond -- automatically switched to "${this.lastWorkingModelUid}" (${respondingModel.name}) requestId=${requestId}`
+        );
+        this.post({
+          type: 'modelAutoSwitched',
+          modelUid: this.lastWorkingModelUid,
+          modelName: respondingModel.name || respondingModel.id || this.lastWorkingModelUid,
+          fromModelUid: message.modelUid,
+        });
+      }
+
+      const completionTokens = (await countTokens(respondingModel, responseText, cts.token)) ?? 0;
       const usage = {
         promptTokens,
         completionTokens,
@@ -770,7 +1201,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       this.tokenHistory.record({
         workflowId: workflow.id,
         workflowLabel: workflow.label,
-        modelName: model.name || model.id || 'unknown',
+        modelName: respondingModel.name || respondingModel.id || 'unknown',
         usage,
       });
       await this.tokenHistory.flush();
@@ -781,7 +1212,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       this.post({
         type: 'streamDone',
         requestId,
-        contextSummary: { ...summary, modelName: model.name || model.id || 'unknown' },
+        contextSummary: { ...summary, modelName: respondingModel.name || respondingModel.id || 'unknown' },
         usage,
         session: this.sessionTotals,
       });

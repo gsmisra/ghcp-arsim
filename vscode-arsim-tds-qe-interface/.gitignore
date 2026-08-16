@@ -8,3 +8,5 @@ dist-vsix/
 # build (see esbuild.js's copySeedGithubContent()) -- the repo-root
 # .github/ folder is the source of truth, not this copy.
 resources/seed-github/
+# Likewise regenerated from ../knowledge-base on every build.
+resources/seed-knowledge-base/

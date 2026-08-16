@@ -16,6 +16,11 @@ const tsconfigPath = path.join(__dirname, 'tsconfig.json');
 const tsconfigRaw = JSON.parse(fs.readFileSync(tsconfigPath, 'utf-8'));
 const adminPassword = String(tsconfigRaw.admin_password || '');
 
+// Confluence importer's default sub-page recursion depth -- same
+// "hardcoded in tsconfig.json, baked in as a define" pattern as the admin
+// password above. See src/globals.d.ts and confluenceCredentials.ts.
+const confluenceMaxDepth = Number(tsconfigRaw.confluence_max_depth ?? 3);
+
 /**
  * Copies the repo's authored seed Skills/Instructions/Custom Prompts
  * (../.github/{skills,instructions,prompts} relative to this extension's
@@ -63,8 +68,37 @@ function copySeedGithubContent() {
   console.log(`[seed-github] Bundled ${totalCopied} seed file(s) from ${sourceRoot} into ${destRoot}.`);
 }
 
+/**
+ * Same idea as copySeedGithubContent(), for the RAG Knowledge Base
+ * feature: any `<repo root>/knowledge-base/*.json` gets bundled into the
+ * .vsix as read-only "built-in" knowledge bases (see
+ * src/knowledgeBase/knowledgeBaseStore.ts's 'bundled' tier). The
+ * destination directory is always created even when empty, so the
+ * extension's bundled-tier scan finds a real (if empty) directory rather
+ * than having to treat "missing" as a special case.
+ */
+function copySeedKnowledgeBases() {
+  const sourceDir = path.join(__dirname, '..', 'knowledge-base');
+  const destDir = path.join(__dirname, 'resources', 'seed-knowledge-base');
+
+  fs.rmSync(destDir, { recursive: true, force: true });
+  fs.mkdirSync(destDir, { recursive: true });
+
+  if (!fs.existsSync(sourceDir)) {
+    console.log('[seed-kb] No ../knowledge-base folder -- shipping with no built-in knowledge bases (users create their own).');
+    return;
+  }
+
+  const files = fs.readdirSync(sourceDir).filter((name) => name.toLowerCase().endsWith('.json'));
+  for (const name of files) {
+    fs.copyFileSync(path.join(sourceDir, name), path.join(destDir, name));
+  }
+  console.log(`[seed-kb] Bundled ${files.length} knowledge base(s) from ${sourceDir} into ${destDir}.`);
+}
+
 async function main() {
   copySeedGithubContent();
+  copySeedKnowledgeBases();
 
   const ctx = await esbuild.context({
     entryPoints: ['src/extension.ts'],
@@ -82,6 +116,7 @@ async function main() {
     external: ['vscode', 'canvas'],
     define: {
       __ADMIN_PASSWORD__: JSON.stringify(adminPassword),
+      __CONFLUENCE_MAX_DEPTH__: JSON.stringify(confluenceMaxDepth),
     },
     sourcemap: !production,
     minify: production,

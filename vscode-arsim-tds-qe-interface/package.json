@@ -2,8 +2,9 @@
   "name": "arsim-tds-qe-ghcp-interface",
   "displayName": "ARSIM TDS QE GHCP Interface",
   "description": "Enterprise QE workflow interface for GitHub Copilot Chat models inside VS Code: PR Analysis, PROD Incident Analysis, with managed Skills, Instructions and Custom Prompts sourced from .github/.",
-  "version": "0.12.0",
+  "version": "0.14.5",
   "publisher": "arsim-tds",
+  "icon": "media/icon.png",
   "private": true,
   "license": "UNLICENSED",
   "engines": {
@@ -66,6 +67,16 @@
       {
         "command": "arsimTdsQe.showLogs",
         "title": "Show Logs",
+        "category": "ARSIM TDS QE"
+      },
+      {
+        "command": "arsimTdsQe.forgetConfluencePassword",
+        "title": "Forget Confluence Password",
+        "category": "ARSIM TDS QE"
+      },
+      {
+        "command": "arsimTdsQe.forgetJiraImportPassword",
+        "title": "Forget Jira Password (Confluence Import)",
         "category": "ARSIM TDS QE"
       }
     ],
@@ -138,6 +149,58 @@
           "default": 30000,
           "minimum": 1000,
           "description": "Timeout (ms) for a Jira ticket/attachment fetch request (Generate Feature File From Jira Story) before it's treated as failed."
+        },
+        "arsimTdsQe.confluenceMaxDepth": {
+          "type": ["number", "null"],
+          "default": null,
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Sub-page recursion depth for importing a Confluence page tree into a Knowledge Base (the root page counts as depth 0). Leave as null to use the depth compiled into this build; set a number to override it."
+        },
+        "arsimTdsQe.confluenceMaxPages": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 2000,
+          "description": "Hard cap on the number of Confluence pages a single import will fetch, so a link into a very large space can't spawn an unbounded number of requests. The import reports if it stopped early because of this cap."
+        },
+        "arsimTdsQe.confluenceApiTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1000,
+          "description": "Timeout (ms) for a single Confluence API request (page, child list, or attachment download) before it's treated as failed."
+        },
+        "arsimTdsQe.ragTopK": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Knowledge Base retrieval (RAG): how many of the most relevant chunks to retrieve and add to the request's context. Higher values give the model more to work with but consume more of the context budget -- watch the Context Limit meter."
+        },
+        "arsimTdsQe.ragChunkChars": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 200,
+          "description": "Knowledge Base retrieval (RAG): target size in characters of each indexed chunk. Documents are split on paragraph boundaries, so actual chunk sizes vary around this target. Smaller chunks retrieve more precisely; larger chunks preserve more surrounding context per hit. Changing this rebuilds every index."
+        },
+        "arsimTdsQe.ragChunkOverlapChars": {
+          "type": "number",
+          "default": 200,
+          "minimum": 0,
+          "description": "Knowledge Base retrieval (RAG): how many characters of the previous chunk to repeat at the start of the next one. Overlap keeps a fact that straddles a chunk boundary retrievable from either side. Set to 0 to disable. Changing this rebuilds every index."
+        },
+        "arsimTdsQe.bm25K1": {
+          "type": "number",
+          "default": 1.5,
+          "minimum": 0,
+          "description": "BM25 term-frequency saturation parameter (k1). Controls how quickly repeated occurrences of a query term stop increasing a chunk's score. Typical range 1.2-2.0; lower values saturate sooner. Leave at the default unless you are deliberately tuning retrieval."
+        },
+        "arsimTdsQe.bm25B": {
+          "type": "number",
+          "default": 0.75,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "BM25 document-length normalization parameter (b). 0 disables length normalization entirely; 1 applies it fully, penalizing long chunks the most. Leave at the default unless you are deliberately tuning retrieval."
         }
       }
     }

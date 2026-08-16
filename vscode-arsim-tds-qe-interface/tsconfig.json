@@ -1,6 +1,8 @@
 {
   "//": "admin_password below is a UI-gate speed bump for the Reset Session action ONLY -- it ships in plaintext inside the packaged .vsix (baked into dist/extension.js at build time) and is not a real access control. Read by esbuild.js at build time; tsc itself ignores this unrecognized top-level key.",
   "admin_password": "misra",
+  "//confluence_max_depth": "Default sub-page recursion depth for the Confluence importer, baked in by esbuild.js as __CONFLUENCE_MAX_DEPTH__ (see src/globals.d.ts). A user-facing setting (arsimTdsQe.confluenceMaxDepth, default null) can override it at runtime -- null means 'use this compiled-in value'.",
+  "confluence_max_depth": 3,
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2021",

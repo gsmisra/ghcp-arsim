@@ -974,6 +974,46 @@ textarea.expanded {
   font-size: 11.5px;
 }
 
+/* ---------- Knowledge Bases (RAG) ---------- */
+/* Taller than the plain .checklist it shares markup with, because each
+   entry can expand to reveal its document list inline. */
+.checklist.kb-list {
+  max-height: 340px;
+}
+.kb-entry {
+  display: flex;
+  flex-direction: column;
+}
+.kb-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 8px 26px; /* indented under its parent knowledge base */
+  padding-left: 10px;
+  border-left: 2px solid var(--td-green-soft);
+}
+.kb-doc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.kb-doc-title {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kb-create-form {
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+.kb-create-form .field:last-of-type {
+  margin-bottom: 6px;
+}
+
 /* ---------- Chat thread height (main view shows only the Chat card) ----------
    The thread is a fixed 70% of viewport height with its own scrollbar --
    a real chat app's message list, not a region that grows to "whatever

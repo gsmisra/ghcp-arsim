@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-  <text x="12" y="9.3" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="6.6" letter-spacing="0.2">TDS</text>
-  <text x="12" y="15.6" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="6.6" letter-spacing="0.3">QE</text>
-  <text x="12" y="21.9" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="6.6" letter-spacing="0.3">AI</text>
+  <!-- Activity Bar icon: VS Code always masks/recolors this to the current
+       theme's icon foreground color (it's rendered as a monochrome mask,
+       same treatment as every built-in Activity Bar icon) -- fill/color
+       here has no visible effect and custom color (TD Green) can't show
+       through it. The colored, TD-Green "ARSIM" wordmark lives in
+       icon.png (package.json's top-level "icon"), which VS Code renders
+       in full color in the Extensions view and .vsix listing. -->
+  <text x="12" y="14.5" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-weight="800" font-size="8.6" letter-spacing="-0.3">ARSIM</text>
+  <rect x="4" y="18" width="16" height="1.6" rx="0.8" />
 </svg>

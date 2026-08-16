@@ -151,6 +151,34 @@ const JIRA_HOST_URL_PATTERN = /(https?:\/\/(?:jtmf|track)\.td\.com\/[^\s"'<>]+)/
  * key. Used for the single-level "linked ticket" expansion -- a linked
  * ticket's own text is not itself scanned again, so this never recurses.
  */
+/**
+ * Like findLinkedTicketKeys below, but reports WHICH host each ticket
+ * lives on. The Confluence importer needs that: a page can link tickets
+ * on both jtmf and track, and each site has its own base URL *and* its
+ * own Acceptance Criteria custom-field id
+ * (ACCEPTANCE_CRITERIA_FIELD_BY_SITE), so "the key" alone isn't enough to
+ * fetch it correctly. Deduplicated on site+key.
+ */
+export function findJiraLinks(text: string): { site: 'jtmf' | 'track'; key: string }[] {
+  const seen = new Set<string>();
+  const out: { site: 'jtmf' | 'track'; key: string }[] = [];
+  const urls = text.match(JIRA_HOST_URL_PATTERN) || [];
+  for (const url of urls) {
+    const site: 'jtmf' | 'track' = /jtmf\.td\.com/i.test(url) ? 'jtmf' : 'track';
+    try {
+      const key = extractJiraKey(url);
+      const dedupeKey = `${site}:${key}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push({ site, key });
+    } catch {
+      // Not a ticket link (e.g. a Confluence/dashboard URL on the same
+      // host) -- skip rather than failing the whole scan.
+    }
+  }
+  return out;
+}
+
 export function findLinkedTicketKeys(text: string, excludeKey: string): string[] {
   const found = new Set<string>();
   const urls = text.match(JIRA_HOST_URL_PATTERN) || [];

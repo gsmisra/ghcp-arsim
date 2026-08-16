@@ -57,6 +57,7 @@
       settingsPrompts: true,
       settingsConnection: true,
       settingsAuthor: true,
+      settingsKnowledgeBases: true,
       // PROD Incident Analysis's MAL Codes / date-range / Fetch form --
       // collapsed by default so it doesn't dominate the compose area once
       // incidents are already loaded; the result summary + jump links stay
@@ -90,6 +91,18 @@
     // user answers by clicking or typing in the normal compose box) --
     // see createEmptyJiraWizard()/startJiraWizard() for the step machine.
     jiraWizard: createEmptyJiraWizard(),
+    // ---- Knowledge Bases (RAG) ----
+    // KnowledgeBaseMeta[] from the host -- names/doc titles/sizes only,
+    // never document text (the corpus stays host-side, same posture as
+    // attached files and Jira chunks).
+    knowledgeBases: [],
+    selectedKnowledgeBaseIds: new Set(),
+    kbImporting: false,
+    kbCreating: false, // true while the "new knowledge base" form is open
+    kbNewName: '',
+    kbNewDescription: '',
+    kbNewTier: 'workspace',
+    kbExpandedId: null, // which KB's document list is open
   };
 
   let contextEstimateTimer = null;
@@ -626,11 +639,109 @@
    *  time, so a selection made mid-conversation is included in the very
    *  next request with no extra wiring needed here. */
   function contextPickerLinksHtml() {
+    const kbCount = state.selectedKnowledgeBaseIds.size;
     return `
       <button class="link-btn" id="select-skill-link">Select Skill</button>
       <button class="link-btn" id="select-instruction-link">Select Instruction</button>
       <button class="link-btn" id="select-prompt-link">Select Custom Prompt</button>
+      <button class="link-btn" id="select-kb-link">Select Knowledge Base${kbCount ? ` (${kbCount})` : ''}</button>
     `;
+  }
+
+  /**
+   * Knowledge Bases (RAG) Settings section: tick the KBs to retrieve from,
+   * create new ones, and manage their documents.
+   *
+   * onSend() and scheduleContextEstimate() both read
+   * state.selectedKnowledgeBaseIds live at call time (same as
+   * selectedSkills) and send it as-is; the HOST decides the actual search
+   * scope (see MainViewProvider.effectiveKnowledgeBaseIds()): for General
+   * Chat and Knowledge Base Q&A, an empty selection here means "search
+   * every knowledge base" (bundled + workspace + personal), not "search
+   * none" -- ticking specific ones only narrows that default. Other
+   * workflows (Jira, ServiceNow) keep the old opt-in-only behavior since
+   * they already have their own dedicated context source.
+   */
+  function knowledgeBasesBodyHtml() {
+    const tierLabel = { bundled: 'built-in', workspace: 'workspace', user: 'personal' };
+
+    const createForm = state.kbCreating
+      ? `
+        <div class="kb-create-form">
+          <div class="field">
+            <label class="field-label">Name</label>
+            <input type="text" id="kb-new-name" value="${esc(state.kbNewName)}" placeholder="e.g. Payments Runbook" />
+          </div>
+          <div class="field">
+            <label class="field-label">Description (optional)</label>
+            <input type="text" id="kb-new-description" value="${esc(state.kbNewDescription)}" placeholder="What this knowledge base covers" />
+          </div>
+          <div class="field">
+            <label class="field-label">Stored in</label>
+            <select id="kb-new-tier">
+              <option value="workspace" ${state.kbNewTier === 'workspace' ? 'selected' : ''}>Workspace — .arsim-knowledge-base/ (shareable via git)</option>
+              <option value="user" ${state.kbNewTier === 'user' ? 'selected' : ''}>Personal — private to this VS Code install</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="kb-create-confirm">Create</button>
+            <button class="link-btn" id="kb-create-cancel">Cancel</button>
+          </div>
+        </div>`
+      : `<div class="btn-row"><button class="btn secondary" id="kb-create-btn">New Knowledge Base…</button></div>`;
+
+    if (!state.knowledgeBases.length) {
+      return `
+        <div class="empty-hint">No knowledge bases yet. Create one, then add documents (Word, PDF, Excel, CSV, Markdown or text) — they're chunked and indexed locally with BM25, and the most relevant passages are retrieved automatically for whatever you ask.</div>
+        ${createForm}`;
+    }
+
+    const rows = state.knowledgeBases
+      .map((kb) => {
+        const checked = state.selectedKnowledgeBaseIds.has(kb.id);
+        const expanded = state.kbExpandedId === kb.id;
+        const docList = expanded
+          ? `
+          <div class="kb-doc-list">
+            ${
+              kb.documents.length
+                ? kb.documents
+                    .map(
+                      (d) => `
+                <div class="kb-doc-row">
+                  <span class="kb-doc-title" title="${esc(d.title)}">${esc(d.title)}</span>
+                  <span class="hint">${d.charCount.toLocaleString()} chars</span>
+                  ${kb.readOnly ? '' : `<button class="link-btn" data-kb-remove-doc="${esc(kb.id)}" data-doc-id="${esc(d.id)}">Remove</button>`}
+                </div>`
+                    )
+                    .join('')
+                : '<div class="empty-hint">No documents yet.</div>'
+            }
+            <div class="btn-row">
+              ${kb.readOnly ? '<span class="hint">Built-in knowledge bases are read-only.</span>' : `<button class="btn secondary" data-kb-add-doc="${esc(kb.id)}" ${state.kbImporting ? 'disabled' : ''}>${state.kbImporting ? 'Importing…' : 'Add Document…'}</button>`}
+              ${kb.readOnly ? '' : `<button class="btn secondary" data-kb-add-confluence="${esc(kb.id)}" ${state.kbImporting ? 'disabled' : ''}>${state.kbImporting ? 'Importing…' : 'Add from Confluence…'}</button>`}
+              ${kb.readOnly ? '' : `<button class="link-btn" data-kb-delete="${esc(kb.id)}">Delete knowledge base</button>`}
+            </div>
+          </div>`
+          : '';
+
+        return `
+        <div class="kb-entry">
+          <label class="check-row">
+            <input type="checkbox" class="kb-toggle" data-kb-id="${esc(kb.id)}" ${checked ? 'checked' : ''} />
+            <button type="button" class="check-row-name" data-kb-expand="${esc(kb.id)}" title="${esc(kb.description || kb.name)}">
+              ${esc(kb.name)} <span class="builtin-badge">(${tierLabel[kb.tier] || kb.tier} · ${kb.documents.length} doc${kb.documents.length === 1 ? '' : 's'})</span>
+            </button>
+          </label>
+          ${docList}
+        </div>`;
+      })
+      .join('');
+
+    return `
+      <div class="hint">In General Chat and Knowledge Base Q&A, every knowledge base below is searched automatically for whatever you ask — tick one or more only if you want to narrow that to specific knowledge bases. The most relevant passages are retrieved automatically (BM25, computed locally — nothing is sent anywhere except the retrieved excerpts, as part of your normal request).</div>
+      <div class="checklist kb-list">${rows}</div>
+      ${createForm}`;
   }
 
   /** One `.chat-entry` per exchange: the user's request bubble followed by
@@ -948,7 +1059,17 @@
     const lastLine = s.attachedFileLastLine !== null && s.attachedFileLastLine !== undefined
       ? `<br/>Last line of attached-file data included: <code>${esc(truncateForDisplay(s.attachedFileLastLine))}</code>`
       : '';
-    return `<div class="context-summary">${parts.join(' · ')}${trunc}${lastLine}</div>`;
+    // RAG provenance: which knowledge-base passages actually grounded
+    // this answer. Shown per response so the link from source material to
+    // output is always auditable -- important in a regulated setting, and
+    // the fastest way to tell "the model made that up" from "the KB
+    // actually says that".
+    const retrieved = s.retrievedChunksIncluded
+      ? `<br/>Retrieved ${s.retrievedChunksIncluded} knowledge-base passage${s.retrievedChunksIncluded === 1 ? '' : 's'}: ${(s.retrievedSources || [])
+          .map((r) => `${esc(r.knowledgeBaseName)} / ${esc(r.documentTitle)} <span class="hint">(score ${r.score})</span>`)
+          .join('; ')}`
+      : '';
+    return `<div class="context-summary">${parts.join(' · ')}${trunc}${lastLine}${retrieved}</div>`;
   }
 
   function placeholderForWorkflow() {
@@ -1346,6 +1467,9 @@
     const selectPromptLink = document.getElementById('select-prompt-link');
     if (selectPromptLink) selectPromptLink.addEventListener('click', () => openSettingsSection('settingsPrompts'));
 
+    const selectKbLink = document.getElementById('select-kb-link');
+    if (selectKbLink) selectKbLink.addEventListener('click', () => openSettingsSection('settingsKnowledgeBases'));
+
     const copyResponseBtn = document.getElementById('copy-response-btn');
     if (copyResponseBtn) {
       copyResponseBtn.addEventListener('click', () => copyResponseToClipboard());
@@ -1528,6 +1652,7 @@
         selectedPromptFile: state.selectedPromptFile,
         attachedFileId: state.attachedFile ? state.attachedFile.meta.fileId : null,
         jiraChunkIds: isJiraWorkflow() ? Array.from(state.jiraWizard.selectedChunkIds) : undefined,
+        selectedKnowledgeBaseIds: Array.from(state.selectedKnowledgeBaseIds),
       });
     }, 500);
   }
@@ -1587,6 +1712,7 @@
       selectedPromptFile: state.selectedPromptFile,
       attachedFileId: state.attachedFile ? state.attachedFile.meta.fileId : null,
       jiraChunkIds: isJiraWorkflow() ? Array.from(state.jiraWizard.selectedChunkIds) : undefined,
+      selectedKnowledgeBaseIds: Array.from(state.selectedKnowledgeBaseIds),
     });
   }
 
@@ -1637,6 +1763,12 @@
           <div class="response-panel ${state.testConnResult ? '' : 'empty'}" data-placeholder="No test run yet.">${state.testConnResult ? esc(state.testConnResult) : ''}</div>
           ${state.testConnUsage ? `<div class="context-summary">Tokens — sent: ${fmtTok(state.testConnUsage.promptTokens)} · received: ${fmtTok(state.testConnUsage.completionTokens)} · total: ${fmtTok(state.testConnUsage.totalTokens)}</div>` : ''}
           `
+        )}
+        ${settingsSectionHtml(
+          'settingsKnowledgeBases',
+          'Knowledge Bases',
+          state.selectedKnowledgeBaseIds.size,
+          knowledgeBasesBodyHtml()
         )}
         ${settingsSectionHtml(
           'settingsAuthor',
@@ -1742,6 +1874,8 @@
       });
     }
 
+    wireKnowledgeBaseSection(overlay);
+
     const promptSelect = document.getElementById('prompt-select');
     if (promptSelect) {
       promptSelect.addEventListener('change', (e) => {
@@ -1804,6 +1938,111 @@
         if (!name.endsWith('.md')) name += '.prompt.md';
         post({ type: 'savePrompt', file: null, fileName: name, content: state.promptFileContent });
         state.promptFileDirty = false;
+      });
+    }
+  }
+
+  /** Knowledge Bases section wiring. Selection changes trigger a context
+   *  re-estimate so the Context Limit meter immediately reflects the
+   *  retrieved material, exactly like ticking a Skill does. */
+  function wireKnowledgeBaseSection(overlay) {
+    overlay.querySelectorAll('.kb-toggle').forEach((el) => {
+      el.addEventListener('change', (e) => {
+        const id = e.target.getAttribute('data-kb-id');
+        if (e.target.checked) state.selectedKnowledgeBaseIds.add(id);
+        else state.selectedKnowledgeBaseIds.delete(id);
+        renderSettings();
+        renderBody(); // refreshes the "Select Knowledge Base (N)" link count
+        scheduleContextEstimate();
+      });
+    });
+
+    overlay.querySelectorAll('[data-kb-expand]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-kb-expand');
+        state.kbExpandedId = state.kbExpandedId === id ? null : id;
+        renderSettings();
+      });
+    });
+
+    overlay.querySelectorAll('[data-kb-add-doc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        post({ type: 'importKnowledgeBaseDocument', knowledgeBaseId: btn.getAttribute('data-kb-add-doc') });
+      });
+    });
+
+    overlay.querySelectorAll('[data-kb-add-confluence]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        post({ type: 'importConfluencePage', knowledgeBaseId: btn.getAttribute('data-kb-add-confluence') });
+      });
+    });
+
+    overlay.querySelectorAll('[data-kb-remove-doc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        post({
+          type: 'removeKnowledgeBaseDocument',
+          knowledgeBaseId: btn.getAttribute('data-kb-remove-doc'),
+          documentId: btn.getAttribute('data-doc-id'),
+        });
+      });
+    });
+
+    overlay.querySelectorAll('[data-kb-delete]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-kb-delete');
+        const kb = state.knowledgeBases.find((k) => k.id === id);
+        // Deleting a KB removes a file from disk -- confirm first, since
+        // there's no undo and it may hold imported documents.
+        if (kb && kb.documents.length > 0) {
+          const ok = window.confirm(`Delete "${kb.name}" and its ${kb.documents.length} document(s)? This cannot be undone.`);
+          if (!ok) return;
+        }
+        state.selectedKnowledgeBaseIds.delete(id);
+        post({ type: 'deleteKnowledgeBase', knowledgeBaseId: id });
+      });
+    });
+
+    const createBtn = document.getElementById('kb-create-btn');
+    if (createBtn) {
+      createBtn.addEventListener('click', () => {
+        state.kbCreating = true;
+        renderSettings();
+      });
+    }
+    const cancelBtn = document.getElementById('kb-create-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        state.kbCreating = false;
+        state.kbNewName = '';
+        state.kbNewDescription = '';
+        renderSettings();
+      });
+    }
+    // Keep the in-progress form values in state so a re-render (triggered
+    // by anything else in Settings) doesn't wipe what's been typed.
+    const nameInput = document.getElementById('kb-new-name');
+    if (nameInput) nameInput.addEventListener('input', (e) => { state.kbNewName = e.target.value; });
+    const descInput = document.getElementById('kb-new-description');
+    if (descInput) descInput.addEventListener('input', (e) => { state.kbNewDescription = e.target.value; });
+    const tierSelect = document.getElementById('kb-new-tier');
+    if (tierSelect) tierSelect.addEventListener('change', (e) => { state.kbNewTier = e.target.value; });
+
+    const confirmBtn = document.getElementById('kb-create-confirm');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        if (!state.kbNewName.trim()) {
+          toast('warn', 'Enter a name for the knowledge base.');
+          return;
+        }
+        post({
+          type: 'createKnowledgeBase',
+          tier: state.kbNewTier,
+          name: state.kbNewName,
+          description: state.kbNewDescription,
+        });
+        state.kbCreating = false;
+        state.kbNewName = '';
+        state.kbNewDescription = '';
       });
     }
   }
@@ -2633,6 +2872,20 @@
         if (state.settingsOpen) renderSettings();
         break;
 
+      case 'modelAutoSwitched': {
+        // The host tried the previously-selected/default model, it didn't
+        // respond in time, and it automatically retried with the next
+        // available Copilot model instead -- reflect that in the dropdown
+        // so the NEXT message goes straight to the model that's known to
+        // actually work, and say so once rather than leaving the switch
+        // silent.
+        state.modelUid = msg.modelUid;
+        const fromLabel = (state.models.find((m) => m.uid === msg.fromModelUid) || {}).name || 'The selected model';
+        toast('warn', `${fromLabel} did not respond -- switched to "${msg.modelName}".`);
+        if (state.settingsOpen) renderSettings();
+        break;
+      }
+
       case 'files':
         state.skills = msg.skills;
         state.instructions = msg.instructions;
@@ -2736,6 +2989,12 @@
         }
         renderBody();
         renderTokenFooter();
+        // renderBody() replaces #chat-thread's innerHTML, which resets its
+        // scrollTop to 0 -- without this, the thread would jump to the top
+        // at the exact moment a response finishes, right when the user
+        // most wants to see it (streamChunk keeps it pinned to the bottom
+        // *while* streaming, but this render happens after that stops).
+        scrollChatToBottom();
         break;
       }
 
@@ -2752,6 +3011,7 @@
         toast('error', msg.message);
         renderBody();
         renderTokenFooter();
+        scrollChatToBottom(); // same reset-on-renderBody() reason as streamDone above
         break;
       }
 
@@ -2877,6 +3137,31 @@
         state.jiraWizard.step = 'savePath';
         renderBody();
         scrollChatToBottom();
+        break;
+
+      case 'knowledgeBases': {
+        state.knowledgeBases = msg.knowledgeBases;
+        state.kbImporting = false;
+        // Drop selections for knowledge bases that no longer exist (e.g.
+        // one was just deleted) so we never send a stale id to the host.
+        const liveIds = new Set(msg.knowledgeBases.map((kb) => kb.id));
+        state.selectedKnowledgeBaseIds.forEach((id) => {
+          if (!liveIds.has(id)) state.selectedKnowledgeBaseIds.delete(id);
+        });
+        if (state.settingsOpen) renderSettings();
+        renderBody();
+        break;
+      }
+
+      case 'knowledgeBaseImporting':
+        state.kbImporting = true;
+        if (state.settingsOpen) renderSettings();
+        break;
+
+      case 'knowledgeBaseError':
+        state.kbImporting = false;
+        if (state.settingsOpen) renderSettings();
+        toast('error', msg.message);
         break;
 
       case 'toast':

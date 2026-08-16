@@ -13,7 +13,8 @@ export type WorkflowId =
   | 'pr-analysis'
   | 'prod-incident-analysis'
   | 'test-failure-analysis'
-  | 'generate-feature-file-from-jira-story';
+  | 'generate-feature-file-from-jira-story'
+  | 'knowledge-base-qa';
 
 export interface WorkflowDefinition {
   id: WorkflowId;
@@ -28,7 +29,7 @@ export interface WorkflowDefinition {
    * ServiceNow-backed PROD Incident Analysis workflow) so the webview can
    * key its UI off workflow metadata instead of hardcoding workflow ids.
    */
-  dataSource?: 'servicenow-incidents' | 'jira-issue';
+  dataSource?: 'servicenow-incidents' | 'jira-issue' | 'knowledge-base';
   /** Workspace-relative .github/... paths auto-selected the moment this
    *  workflow becomes active (and cleanly removed -- not the user's own
    *  picks -- when the user switches away). */
@@ -88,6 +89,60 @@ export interface JiraChunkMeta {
   charCount: number;
   /** attachment chunks only. */
   attachmentMeta?: AttachedFileMeta;
+}
+
+/**
+ * Knowledge Base (RAG). A KB is a named collection of plain-text
+ * documents that get chunked and BM25-indexed for retrieval -- see
+ * src/knowledgeBase/knowledgeBaseStore.ts and src/rag/.
+ *
+ * Three storage tiers, all listed together in the UI and distinguishable
+ * by `tier`. Ids are tier-namespaced (`workspace:payments-runbook`) so
+ * two tiers can never collide:
+ *   - 'bundled'   read-only, ships inside the .vsix
+ *   - 'workspace' .arsim-knowledge-base/ in the workspace (git-shareable)
+ *   - 'user'      the extension's private globalStorage (personal)
+ */
+export type KnowledgeBaseTier = 'bundled' | 'workspace' | 'user';
+
+export interface KbDocument {
+  id: string;
+  title: string;
+  text: string;
+  /** Where the text came from, when imported from a file. */
+  sourcePath?: string;
+  addedAt: string; // ISO 8601
+}
+
+export interface KnowledgeBase {
+  /** Tier-namespaced, e.g. "workspace:payments-runbook". */
+  id: string;
+  tier: KnowledgeBaseTier;
+  name: string;
+  description: string;
+  documents: KbDocument[];
+}
+
+/** What the webview sees -- never the document text itself, only enough
+ *  to render the picker and the per-KB document list. */
+export interface KnowledgeBaseMeta {
+  id: string;
+  tier: KnowledgeBaseTier;
+  name: string;
+  description: string;
+  /** Read-only KBs (the bundled tier) can't accept new documents. */
+  readOnly: boolean;
+  documents: { id: string; title: string; charCount: number }[];
+  totalChars: number;
+}
+
+/** One retrieved chunk, surfaced back to the UI so the user can see
+ *  exactly which knowledge-base material grounded an answer. */
+export interface RetrievedChunkInfo {
+  knowledgeBaseName: string;
+  documentTitle: string;
+  score: number;
+  charCount: number;
 }
 
 export type GithubFileKind = 'skill' | 'instruction' | 'prompt';
@@ -284,7 +339,11 @@ export type HostMessage =
   | { type: 'jiraChunkContentUpdated'; chunkId: string; charCount: number }
   | { type: 'featureFileSaved'; path: string }
   | { type: 'featureFileSaveError'; message: string }
-  | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string };
+  | { type: 'knowledgeBases'; knowledgeBases: KnowledgeBaseMeta[] }
+  | { type: 'knowledgeBaseError'; message: string }
+  | { type: 'knowledgeBaseImporting' }
+  | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string }
+  | { type: 'modelAutoSwitched'; modelUid: string; modelName: string; fromModelUid: string };
 
 /** Webview -> Extension messages */
 export type WebviewMessage =
@@ -308,6 +367,12 @@ export type WebviewMessage =
        *  same "selection lives in webview state, read fresh on every call"
        *  pattern already used for selectedSkills/selectedInstructions. */
       jiraChunkIds?: string[] | null;
+      /** RAG: ids of the Knowledge Bases currently ticked. Read live at
+       *  send/estimate time, same as selectedSkills -- when non-empty the
+       *  host retrieves the top-K most relevant chunks for `userText` and
+       *  injects them. Empty/omitted means no retrieval runs at all, so
+       *  every pre-RAG code path is untouched. */
+      selectedKnowledgeBaseIds?: string[] | null;
     }
   | { type: 'testConnection'; modelUid: string }
   | { type: 'saveWizardFile'; kind: GithubFileKind; data: Record<string, string> }
@@ -328,6 +393,12 @@ export type WebviewMessage =
       selectedPromptFile: GithubFileRef | null;
       attachedFileId: string | null;
       jiraChunkIds?: string[] | null;
+      /** RAG: ids of the Knowledge Bases currently ticked. Read live at
+       *  send/estimate time, same as selectedSkills -- when non-empty the
+       *  host retrieves the top-K most relevant chunks for `userText` and
+       *  injects them. Empty/omitted means no retrieval runs at all, so
+       *  every pre-RAG code path is untouched. */
+      selectedKnowledgeBaseIds?: string[] | null;
     }
   | { type: 'loadManagedFile'; kind: GithubFileKind; file: GithubFileRef }
   | { type: 'saveManagedFile'; kind: GithubFileKind; file: GithubFileRef | null; fileName: string; content: string }
@@ -335,7 +406,13 @@ export type WebviewMessage =
   | { type: 'downloadIncidentAnalysisCsv'; headers: string[]; rows: string[][] }
   | { type: 'jiraFetchTicket'; site: 'jtmf' | 'track'; username: string; password: string; ticketUrl: string }
   | { type: 'updateJiraAttachmentSelection'; chunkId: string; selection: FileSelection }
-  | { type: 'saveFeatureFile'; relativePath: string; fileNameHint: string; content: string };
+  | { type: 'saveFeatureFile'; relativePath: string; fileNameHint: string; content: string }
+  | { type: 'listKnowledgeBases' }
+  | { type: 'createKnowledgeBase'; tier: 'workspace' | 'user'; name: string; description: string }
+  | { type: 'deleteKnowledgeBase'; knowledgeBaseId: string }
+  | { type: 'importKnowledgeBaseDocument'; knowledgeBaseId: string }
+  | { type: 'removeKnowledgeBaseDocument'; knowledgeBaseId: string; documentId: string }
+  | { type: 'importConfluencePage'; knowledgeBaseId: string };
 
 export interface ContextSummary {
   modelName: string;
@@ -358,4 +435,10 @@ export interface ContextSummary {
    *  chunks (AC segments/Description/linked tickets/attachments) made it
    *  into the request. 0 for every other workflow. */
   jiraChunksIncluded: number;
+  /** RAG: how many retrieved knowledge-base chunks made it into the
+   *  request, and which document each came from. 0/[] when no Knowledge
+   *  Base was selected. Surfaced in the UI so it's always auditable which
+   *  KB material grounded a given answer. */
+  retrievedChunksIncluded: number;
+  retrievedSources: RetrievedChunkInfo[];
 }

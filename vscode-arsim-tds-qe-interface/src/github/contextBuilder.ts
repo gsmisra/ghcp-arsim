@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import { readGithubFile } from './fileDiscovery';
-import { ContextSummary, GithubFileRef, WorkflowDefinition } from '../types';
+import { ContextSummary, GithubFileRef, RetrievedChunkInfo, WorkflowDefinition } from '../types';
+
+/** A retrieved knowledge-base chunk plus the provenance the UI reports. */
+export interface RetrievedChunk {
+  label: string;
+  content: string;
+  info: RetrievedChunkInfo;
+}
 import { truncateToLastLine } from '../fileIngest/textStats';
 
 /**
@@ -37,6 +44,13 @@ export interface BuildContextParams {
    *  section uses, right after Skills/Instructions/Prompt and before the
    *  attached file -- purely additive, no other section's logic changes. */
   jiraChunks?: { label: string; content: string }[];
+  /** RAG: the top-K knowledge-base chunks retrieved for this request
+   *  (see src/rag/retriever.ts). Placed ahead of the attached file so
+   *  that when budget runs short it's the bulk attachment that gets
+   *  trimmed, not the specifically-retrieved-as-relevant material.
+   *  Omitted entirely when no Knowledge Base is selected, which is what
+   *  makes this change a no-op for every pre-RAG code path. */
+  retrievedChunks?: RetrievedChunk[];
   /**
    * The selected model's real input-token budget, when known. When
    * provided (with `countTokens`), the total/attached-file character
@@ -162,6 +176,18 @@ export async function buildContext(
     if (consume(`Jira: ${chunk.label}`, chunk.content)) jiraChunksIncluded += 1;
   }
 
+  // Retrieved knowledge-base material, highest-scoring first (the
+  // retriever returns them ranked), so if budget runs out mid-list it's
+  // the *least* relevant chunks that get dropped.
+  let retrievedChunksIncluded = 0;
+  const retrievedSources: RetrievedChunkInfo[] = [];
+  for (const chunk of params.retrievedChunks ?? []) {
+    if (consume(`Knowledge Base: ${chunk.label}`, chunk.content)) {
+      retrievedChunksIncluded += 1;
+      retrievedSources.push(chunk.info);
+    }
+  }
+
   // The attached file gets its own dedicated assembly (rather than going
   // through the generic `consume`) for two reasons: we need to surface the
   // exact last line that made it into the request, and it's the one
@@ -220,6 +246,16 @@ export async function buildContext(
         params.countTokens(params.workflow.systemPrompt),
         params.countTokens(content),
       ]);
+      // countTokens() fails soft to `null` on any error, including a
+      // stalled/timed-out vscode.lm call (see copilotClient.ts) -- if
+      // BOTH came back null, nothing was actually measured, and reporting
+      // that as `promptTokens: 0` would be a confidently wrong answer
+      // (the Context Limit meter showing "0%" as if there's genuinely
+      // nothing to send, rather than "couldn't tell"). Leave promptTokens
+      // as null in that case so the caller can distinguish the two.
+      if (systemTokens === null && contentTokens === null) {
+        break;
+      }
       const total = (systemTokens ?? 0) + (contentTokens ?? 0);
       promptTokens = total;
 
@@ -259,6 +295,8 @@ export async function buildContext(
       budgetSource,
       effectiveMaxTotalChars: effectiveMaxTotal,
       jiraChunksIncluded,
+      retrievedChunksIncluded,
+      retrievedSources,
     },
     promptTokens,
   };

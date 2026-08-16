@@ -73,7 +73,16 @@ async function listBundledMarkdownFiles(kind: GithubFileKind): Promise<GithubFil
       .filter(([name, type]) => type === vscode.FileType.File && name.toLowerCase().endsWith('.md'))
       .map(([name]) => ({
         kind,
-        relativePath: `${FOLDER_BY_KIND[kind]}/${name}`,
+        // Must match the SAME `.github/<kind>/<name>` shape
+        // listWorkspaceMarkdownFiles() produces (via asRelativePath) --
+        // workflow definitions' autoSkillPath/autoInstructionPath/
+        // autoPromptPath (e.g. '.github/skills/prod-incident-analysis.skill.md')
+        // are matched against this field by exact string equality in the
+        // webview's ensureAutoSelectionForCurrentWorkflow(). A bundled file
+        // is the common case now that Skills/Instructions/Prompts ship
+        // inside the .vsix, so this prefix isn't cosmetic -- without it,
+        // auto-selection silently never matches a bundled file.
+        relativePath: `${githubFolderFor(kind)}/${name}`,
         fileName: name,
         source: 'bundled' as const,
       }));
